@@ -1,42 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '../services/db';
-import type { Station } from '../types';
-import { Trash2 } from 'lucide-react';
 
-interface EditStationModalProps {
-  station: Station | null;
+interface AddStationModalProps {
+  isOpen: boolean;
   onClose: () => void;
-  onUpdate: () => void;
+  onAdd: () => void;
 }
 
-export function EditStationModal({ station, onClose, onUpdate }: EditStationModalProps) {
+export function AddStationModal({ isOpen, onClose, onAdd }: AddStationModalProps) {
   const [name, setName] = useState('');
+  const [type, setType] = useState('pc');
   const [hourlyRate, setHourlyRate] = useState('');
-  const [gracePeriod, setGracePeriod] = useState('0');
+  const [gracePeriod, setGracePeriod] = useState('5');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (station) {
-      setName(station.name);
-      setHourlyRate(station.hourly_rate.toString());
-      setGracePeriod(station.grace_period_minutes?.toString() || '0');
-    }
-  }, [station]);
-
   const handleSave = async () => {
-    if (!station) return;
+    if (!name.trim() || !hourlyRate) return;
     setLoading(true);
     try {
-      await db.stations.update(station.id, {
+      await db.stations.add({
         name,
+        type,
         hourly_rate: Number(hourlyRate),
-        grace_period_minutes: Number(gracePeriod)
+        status: 'free',
+        grace_period_minutes: Number(gracePeriod),
+        overtime_block_minutes: 15 // default
       });
-      onUpdate();
+      setName('');
+      setHourlyRate('');
+      setGracePeriod('5');
+      setType('pc');
+      onAdd();
       onClose();
     } catch (e) {
       console.error(e);
@@ -45,27 +44,11 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
     }
   };
 
-  const handleDelete = async () => {
-    if (!station) return;
-    if (confirm(`Are you sure you want to completely delete "${station.name}"?`)) {
-      setLoading(true);
-      try {
-        await db.stations.delete(station.id);
-        onUpdate();
-        onClose();
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
   return (
-    <Dialog open={!!station} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="bg-card text-card-foreground border-border max-w-sm">
         <DialogHeader>
-          <DialogTitle>Edit Station</DialogTitle>
+          <DialogTitle>Add New Station</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4 mt-4">
@@ -74,9 +57,27 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
             <Input 
               value={name} 
               onChange={(e) => setName(e.target.value)} 
+              placeholder="e.g., PC - 01"
               className="bg-background border-border"
             />
           </div>
+
+          <div className="space-y-2">
+            <Label>Station Type</Label>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger className="border-border">
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pc">PC</SelectItem>
+                <SelectItem value="ps5">PS5</SelectItem>
+                <SelectItem value="ps5_vr">PS5 VR</SelectItem>
+                <SelectItem value="ps5_simracing">Sim Racing</SelectItem>
+                <SelectItem value="snooker">Snooker</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <Label>Hourly Rate</Label>
             <div className="relative">
@@ -86,6 +87,7 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
                 value={hourlyRate} 
                 onChange={(e) => setHourlyRate(e.target.value)} 
                 className="bg-background border-border pl-7"
+                placeholder="100"
               />
             </div>
           </div>
@@ -104,22 +106,9 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
             <p className="text-[10px] text-muted-foreground">Free time before billing starts.</p>
           </div>
 
-          <Button onClick={handleSave} disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white mt-4">
-            {loading ? 'Saving...' : 'Save Changes'}
+          <Button onClick={handleSave} disabled={loading || !name || !hourlyRate} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white mt-4">
+            {loading ? 'Adding...' : 'Add Station'}
           </Button>
-
-          {station?.status === 'occupied' ? (
-            <div className="text-center mt-2">
-              <p className="text-[10px] text-red-400 font-medium">Cannot delete a station with an active session.</p>
-              <Button disabled variant="outline" className="w-full border-red-500/20 text-red-500/50 mt-1">
-                Delete Station
-              </Button>
-            </div>
-          ) : (
-            <Button onClick={handleDelete} disabled={loading} variant="outline" className="w-full border-red-500/20 text-red-500 hover:bg-red-500/10 hover:text-red-400 mt-2">
-              <Trash2 className="w-4 h-4 mr-2" /> Delete Station
-            </Button>
-          )}
         </div>
       </DialogContent>
     </Dialog>

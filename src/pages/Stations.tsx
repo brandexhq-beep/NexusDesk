@@ -3,10 +3,14 @@ import { db } from '../services/db';
 import type { Station } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EditStationModal } from '../components/EditStationModal';
+import { AddStationModal } from '../components/AddStationModal';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
 
 export function Stations() {
   const [stations, setStations] = useState<Station[]>([]);
   const [editingStation, setEditingStation] = useState<Station | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const loadStations = () => {
     db.stations.getAll().then(setStations);
@@ -24,7 +28,12 @@ export function Stations() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight text-foreground">Station Configuration</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Station Configuration</h1>
+        <Button onClick={() => setIsAddModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+          <Plus className="w-4 h-4" /> Add Station
+        </Button>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {stations.map((s) => {
@@ -88,6 +97,11 @@ export function Stations() {
         station={editingStation} 
         onClose={() => setEditingStation(null)} 
         onUpdate={loadStations} 
+      />
+      <AddStationModal 
+        isOpen={isAddModalOpen} 
+        onClose={() => setIsAddModalOpen(false)} 
+        onAdd={loadStations} 
       />
     </div>
   );
