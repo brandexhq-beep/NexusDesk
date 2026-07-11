@@ -71,6 +71,11 @@ export function Layout() {
             <LogOut className="w-5 h-5 transition-transform duration-300 group-hover:-translate-x-1" />
             Sign Out
           </button>
+          <div className="mt-6 text-center">
+            <a href="https://www.brandex.co.in" target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground/60 hover:text-indigo-400 transition-colors">
+              Built by Brandex
+            </a>
+          </div>
         </div>
       </aside>
 

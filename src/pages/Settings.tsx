@@ -229,6 +229,12 @@ export function Settings() {
         onClose={() => setIsRuleModalOpen(false)} 
         onSave={loadSettings} 
       />
+
+      <div className="pt-8 text-center">
+        <a href="https://www.brandex.co.in" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground/60 hover:text-indigo-400 transition-colors">
+          Built by Brandex
+        </a>
+      </div>
     </div>
   );
 }
