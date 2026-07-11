@@ -1,0 +1,234 @@
+import { useEffect, useState } from 'react';
+import { db } from '../services/db';
+import type { AppSettings, PricingRule } from '../types';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Save, Plus } from 'lucide-react';
+import { PricingRuleModal } from '../components/PricingRuleModal';
+
+export function Settings() {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [formData, setFormData] = useState({
+    cafe_name: '',
+    cafe_logo_url: '',
+    currency_symbol: '',
+    tax_rate_percent: '',
+    loyalty_conversion_rate: '',
+    session_start_delay_sec: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  const [rules, setRules] = useState<PricingRule[]>([]);
+  const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    const data = await db.settings.get();
+    const rulesData = await db.pricingRules.getAll();
+    setSettings(data);
+    setRules(rulesData);
+    setFormData({
+      cafe_name: data.cafe_name || '',
+      cafe_logo_url: data.cafe_logo_url || '',
+      currency_symbol: data.currency_symbol || '',
+      tax_rate_percent: data.tax_rate_percent?.toString() || '0',
+      loyalty_conversion_rate: data.loyalty_conversion_rate.toString(),
+      session_start_delay_sec: data.session_start_delay_sec?.toString() || '0'
+    });
+  };
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await db.settings.update({
+        cafe_name: formData.cafe_name,
+        cafe_logo_url: formData.cafe_logo_url,
+        currency_symbol: formData.currency_symbol,
+        tax_rate_percent: Number(formData.tax_rate_percent),
+        loyalty_conversion_rate: Number(formData.loyalty_conversion_rate),
+        session_start_delay_sec: Number(formData.session_start_delay_sec)
+      });
+      await loadSettings();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!settings) return <div className="text-muted-foreground">Loading settings...</div>;
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Settings</h1>
+        <Button onClick={handleSave} disabled={loading} className="bg-primary text-primary-foreground gap-2">
+          <Save className="w-4 h-4" /> {loading ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </div>
+
+      <Tabs defaultValue="general" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 max-w-md bg-black/40 border border-white/5 mb-6">
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="pricing">Dynamic Pricing</TabsTrigger>
+          <TabsTrigger value="loyalty">Loyalty System</TabsTrigger>
+        </TabsList>
+        
+        {/* GENERAL TAB */}
+        <TabsContent value="general" className="space-y-6">
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Cafe Profile</CardTitle>
+              <CardDescription>Basic information about your business.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Cafe Name</Label>
+                  <Input 
+                    value={formData.cafe_name} 
+                    onChange={(e) => setFormData({...formData, cafe_name: e.target.value})}
+                    className="border-white/10 bg-background/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Logo Image/GIF URL</Label>
+                  <Input 
+                    value={formData.cafe_logo_url} 
+                    onChange={(e) => setFormData({...formData, cafe_logo_url: e.target.value})}
+                    placeholder="https://example.com/logo.gif"
+                    className="border-white/10 bg-background/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Currency Symbol</Label>
+                  <Input 
+                    value={formData.currency_symbol} 
+                    onChange={(e) => setFormData({...formData, currency_symbol: e.target.value})}
+                    className="border-white/10 bg-background/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Session Start Delay (Seconds)</Label>
+                  <Input 
+                    type="number" min="0"
+                    value={formData.session_start_delay_sec} 
+                    onChange={(e) => setFormData({...formData, session_start_delay_sec: e.target.value})}
+                    placeholder="e.g. 5"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Countdown delay before a session starts tracking time.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Billing & Taxes</CardTitle>
+              <CardDescription>Default tax configurations applied to checkout.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2 max-w-xs">
+                <Label>Tax Rate (%)</Label>
+                <div className="relative">
+                  <Input 
+                    type="number" 
+                    value={formData.tax_rate_percent} 
+                    onChange={(e) => setFormData({...formData, tax_rate_percent: e.target.value})}
+                    className="border-white/10 bg-background/50 pr-8"
+                  />
+                  <span className="absolute right-3 top-2.5 text-muted-foreground text-sm">%</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* PRICING TAB */}
+        <TabsContent value="pricing">
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-card-foreground">Dynamic Pricing Rules</CardTitle>
+                <CardDescription>Configure "Happy Hour" rules that automatically change hourly rates.</CardDescription>
+              </div>
+              <Button onClick={() => { setEditingRule(null); setIsRuleModalOpen(true); }} variant="outline" className="border-white/10 bg-white/5 hover:bg-white/10 gap-2">
+                <Plus className="w-4 h-4" /> Add Rule
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {rules.length === 0 ? (
+                <div className="text-muted-foreground text-sm py-8 text-center border border-dashed border-white/10 rounded-lg">No pricing rules configured.</div>
+              ) : (
+                <div className="space-y-4">
+                  {rules.map(rule => (
+                    <div 
+                      key={rule.id} 
+                      onClick={() => { setEditingRule(rule); setIsRuleModalOpen(true); }}
+                      className="cursor-pointer flex items-center justify-between p-4 border border-white/5 rounded-xl bg-black/20 hover:bg-black/40 transition-colors"
+                    >
+                      <div>
+                        <h3 className="font-medium text-foreground text-lg">{rule.name}</h3>
+                        <p className="text-sm text-muted-foreground mt-1 font-mono">
+                          {rule.start_time} - {rule.end_time} | Days: {rule.days.join(', ')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="font-bold text-emerald-400 text-lg">{formData.currency_symbol} {rule.fixed_hourly_rate}/hr</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                          rule.active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/10 text-muted-foreground'
+                        }`}>
+                          {rule.active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* LOYALTY TAB */}
+        <TabsContent value="loyalty">
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Loyalty Points</CardTitle>
+              <CardDescription>Configure how loyalty points are earned and redeemed.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Conversion Rate</Label>
+                <div className="flex items-center gap-3">
+                  <Input 
+                    type="number" 
+                    min="1"
+                    value={formData.loyalty_conversion_rate} 
+                    onChange={(e) => setFormData({...formData, loyalty_conversion_rate: e.target.value})}
+                    className="border-white/10 bg-background/50 w-32"
+                  />
+                  <span className="text-muted-foreground">points equals {formData.currency_symbol} 1 discount.</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <PricingRuleModal 
+        rule={editingRule} 
+        isOpen={isRuleModalOpen} 
+        onClose={() => setIsRuleModalOpen(false)} 
+        onSave={loadSettings} 
+      />
+    </div>
+  );
+}
