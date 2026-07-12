@@ -95,10 +95,13 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
 
       // 3. Handle Customer tab/wallet
       if (customer) {
+        let newWalletBalance = customer.wallet_balance;
+        let newAmountOwed = customer.amount_owed;
+
         if (paymentMode === 'wallet') {
-          await db.customers.update(customer.id, { wallet_balance: customer.wallet_balance - bill.total });
+          newWalletBalance = customer.wallet_balance - bill.total;
         } else if (paymentMode === 'tab') {
-          await db.customers.update(customer.id, { amount_owed: customer.amount_owed + bill.total });
+          newAmountOwed = customer.amount_owed + bill.total;
         }
         
         await db.transactions.add({
@@ -122,9 +125,20 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         // Add points and deduct redeemed
         const newLoyaltyPoints = customer.loyalty_points + Math.floor(bill.total / 10) - pointsToRedeem;
         await db.customers.update(customer.id, { 
+          wallet_balance: Math.max(0, newWalletBalance),
+          amount_owed: newAmountOwed,
           loyalty_points: newLoyaltyPoints,
           available_minutes: Math.max(0, customer.available_minutes - minutesUsed) 
         });
+
+        // Queue a review request for 30 minutes from now if the customer has a phone number
+        if (customer.phone) {
+          await db.reviewRequests.add({
+            customer_id: customer.id,
+            session_id: session.id,
+            scheduled_for: Date.now() + 30 * 60 * 1000 // 30 minutes
+          });
+        }
       }
 
       onStop();

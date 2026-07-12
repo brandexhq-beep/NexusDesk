@@ -22,7 +22,7 @@ export function AddCustomerModal({ open, onClose, onAdd }: AddCustomerModalProps
     try {
       await db.customers.add({
         name,
-        phone,
+        phone: `+91 ${phone}`,
         wallet_balance: 0,
         available_minutes: 0,
         amount_owed: 0,
@@ -59,13 +59,20 @@ export function AddCustomerModal({ open, onClose, onAdd }: AddCustomerModalProps
           </div>
           <div className="space-y-2">
             <Label htmlFor="phone">Phone Number</Label>
-            <Input 
-              id="phone" 
-              placeholder="e.g. 555-0199" 
-              value={phone} 
-              onChange={(e) => setPhone(e.target.value)}
-              className="border-border bg-background"
-            />
+            <div className="relative flex items-center">
+              <span className="absolute left-3 text-muted-foreground text-sm">+91</span>
+              <Input 
+                id="phone" 
+                placeholder="9876543210" 
+                value={phone} 
+                maxLength={10}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '');
+                  if (val.length <= 10) setPhone(val);
+                }}
+                className="border-border bg-background pl-10"
+              />
+            </div>
           </div>
         </div>
 

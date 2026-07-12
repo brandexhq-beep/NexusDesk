@@ -1,5 +1,14 @@
 export type StationType = 'ps5' | 'ps5_vr' | 'ps5_simracing' | 'snooker' | 'pc' | string;
 
+export interface ReviewRequest {
+  id: string;
+  customer_id: string;
+  session_id: string;
+  scheduled_for: number; // timestamp when it should be sent (e.g. 30 mins after checkout)
+  sent: boolean;
+  created_at: number;
+}
+
 export type StationStatus = 'free' | 'occupied' | 'maintenance';
 
 export interface Station {
@@ -49,6 +58,7 @@ export interface Session {
   total_amount: number;
   payment_mode: PaymentMode | null;
   status: SessionStatus;
+  extended_minutes?: number;
 }
 
 export type MenuCategory = 'snack' | 'drink' | 'combo' | 'package';
@@ -81,6 +91,7 @@ export interface AppSettings {
   tax_rate_percent: number;
   loyalty_conversion_rate: number; // e.g. 10 means 10 points = 1 currency unit
   session_start_delay_sec?: number;
+  admin_password?: string;
 }
 
 export interface PricingRule {

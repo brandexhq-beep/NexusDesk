@@ -19,28 +19,62 @@ export function Reports() {
   }, []);
 
   const loadData = async () => {
-    // 1. Top Customers
     const customers = await db.customers.getAll();
     const sorted = [...customers].sort((a, b) => b.loyalty_points - a.loyalty_points).slice(0, 5);
     setTopCustomers(sorted);
 
-    // TODO: [INTEGRATION PLACEHOLDER] Replace these local db calls with real Firebase queries
-    // e.g., const snapshot = await getDocs(collection(firestore, 'sessions'));
-    
-    // Simulate real data processing for Revenue (Weekly)
-    const simulatedRevenue = [
-      { name: 'Mon', gaming: 4000, food: 2400 },
-      { name: 'Tue', gaming: 3000, food: 1398 },
-      { name: 'Wed', gaming: 2000, food: 9800 },
-      { name: 'Thu', gaming: 2780, food: 3908 },
-      { name: 'Fri', gaming: 1890, food: 4800 },
-      { name: 'Sat', gaming: 2390, food: 3800 },
-      { name: 'Sun', gaming: 3490, food: 4300 },
-    ];
-    // In a real scenario, group allTransactions by day and sum gaming vs food.
-    setRevenueData(simulatedRevenue);
+    const transactions = await db.transactions.getAll();
+    const sessions = await db.sessions.getAll();
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const thirtyDaysAgo = todayStart - 30 * 24 * 60 * 60 * 1000;
 
-    // Simulate real data processing for Station Utilization
+    let todayRev = 0;
+    let monthRev = 0;
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const weekData = Array.from({length: 7}).map((_, i) => {
+      const d = new Date(now.getTime() - (6 - i) * 24 * 60 * 60 * 1000);
+      return {
+        name: days[d.getDay()],
+        gaming: 0,
+        food: 0,
+        date: d.getDate()
+      };
+    });
+
+    sessions.forEach(s => {
+      if (s.status !== 'completed' || !s.end_time) return;
+      const end = Number(s.end_time);
+      if (end >= todayStart) todayRev += s.total_amount;
+      if (end >= thirtyDaysAgo) monthRev += s.total_amount;
+      
+      const sDate = new Date(end).getDate();
+      const weekDay = weekData.find(w => w.date === sDate);
+      if (weekDay) {
+         const foodCost = s.orders ? s.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0) : 0;
+         weekDay.gaming += s.total_amount - foodCost;
+         weekDay.food += foodCost;
+      }
+    });
+    
+    transactions.forEach(t => {
+      if (t.type === 'food_charge' || t.type === 'food_order') {
+        const time = Number(t.timestamp);
+        if (time >= todayStart) todayRev += t.amount;
+        if (time >= thirtyDaysAgo) monthRev += t.amount;
+        const sDate = new Date(time).getDate();
+        const weekDay = weekData.find(w => w.date === sDate);
+        if (weekDay) {
+           weekDay.food += t.amount;
+        }
+      }
+    });
+
+    setTodayRevenue(todayRev);
+    setMonthRevenue(monthRev);
+    setRevenueData(weekData);
+
     const simulatedUtilization = [
       { time: '10am', ps5: 20, vr: 10, pc: 5 },
       { time: '12pm', ps5: 40, vr: 15, pc: 20 },
@@ -51,10 +85,6 @@ export function Reports() {
       { time: '10pm', ps5: 60, vr: 30, pc: 50 },
     ];
     setUtilizationData(simulatedUtilization);
-
-    // Dynamic Summary Stats
-    setTodayRevenue(7790); // Replace with sum(transactions where date == today)
-    setMonthRevenue(152800); // Replace with sum(transactions where date >= 30 days ago)
   };
 
   const handleExportCSV = () => {

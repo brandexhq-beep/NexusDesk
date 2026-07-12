@@ -2,7 +2,9 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { Gamepad2, Users, Monitor, LogOut, Coffee, Menu as MenuIcon, LineChart, Settings as Cog } from 'lucide-react';
 import { GlobalAlerts } from './GlobalAlerts';
+import { ReviewQueue } from './ReviewQueue';
 import { db } from '../services/db';
+import { useAuth } from './AuthProvider';
 
 const navItems = [
   { name: 'Dashboard', path: '/', icon: Gamepad2 },
@@ -15,6 +17,7 @@ const navItems = [
 
 export function Layout() {
   const location = useLocation();
+  const { logout } = useAuth();
   const [cafeName, setCafeName] = useState('Cafe Management');
   const [cafeLogo, setCafeLogo] = useState('');
 
@@ -28,6 +31,7 @@ export function Layout() {
   return (
     <div className="flex h-screen bg-black text-foreground overflow-hidden">
       <GlobalAlerts />
+      <ReviewQueue />
       {/* Background ambient gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/20 via-background to-emerald-900/10 pointer-events-none" />
       
@@ -67,7 +71,10 @@ export function Layout() {
         </nav>
 
         <div className="p-4 border-t border-white/5 mb-4">
-          <button className="group flex items-center gap-3 px-4 py-3 w-full text-muted-foreground hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all duration-300 border border-transparent hover:border-red-400/20">
+          <button 
+            onClick={logout}
+            className="group flex items-center gap-3 px-4 py-3 w-full text-muted-foreground hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all duration-300 border border-transparent hover:border-red-400/20"
+          >
             <LogOut className="w-5 h-5 transition-transform duration-300 group-hover:-translate-x-1" />
             Sign Out
           </button>

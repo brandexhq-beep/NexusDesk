@@ -4,7 +4,7 @@ import type { Customer } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { UserPlus, Phone, WalletCards } from 'lucide-react';
+import { UserPlus, Phone, WalletCards, Download } from 'lucide-react';
 import { AddCustomerModal } from '../components/AddCustomerModal';
 import { AddBalanceModal } from '../components/AddBalanceModal';
 import { CustomerProfileModal } from '../components/CustomerProfileModal';
@@ -30,13 +30,40 @@ export function Customers() {
     return `${h}h ${m}m`;
   };
 
+  const handleExportCSV = () => {
+    if (customers.length === 0) return;
+    const headers = ['Name', 'Phone', 'Time Balance (mins)', 'Wallet Balance', 'Loyalty Points', 'Tab'];
+    const rows = customers.map(c => [
+      c.name,
+      c.phone,
+      c.available_minutes,
+      c.wallet_balance,
+      c.loyalty_points,
+      c.amount_owed
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "customers_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Customers</h1>
-        <Button onClick={() => setIsAddModalOpen(true)} className="bg-primary text-primary-foreground gap-2">
-          <UserPlus className="w-4 h-4" /> Add Customer
-        </Button>
+        <div className="flex gap-3">
+          <Button onClick={handleExportCSV} variant="outline" className="border-border gap-2">
+            <Download className="w-4 h-4" /> Export CSV
+          </Button>
+          <Button onClick={() => setIsAddModalOpen(true)} className="bg-primary text-primary-foreground gap-2">
+            <UserPlus className="w-4 h-4" /> Add Customer
+          </Button>
+        </div>
       </div>
       
       <Card className="bg-card border-border">

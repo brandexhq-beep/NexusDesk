@@ -92,6 +92,7 @@ export function Dashboard() {
 
 function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick }: { station: Station, rules: PricingRule[], onStartClick: () => void, onStopClick: (session: Session) => void, onAddFoodClick: (session: Session) => void }) {
   const isOccupied = station.status === 'occupied';
+  const isMaintenance = station.status === 'maintenance';
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [elapsed, setElapsed] = useState<string>('00:00:00');
   const [currentCost, setCurrentCost] = useState<number>(0);
@@ -125,14 +126,13 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
       if (activeSession.combo_id) {
         tempCost = activeSession.base_amount || 0; 
       } else {
-        // We do not pass freeMinutes here so the dashboard shows the "cash cost"
-        // Alternatively we could fetch the customer and pass their freeMinutes, 
-        // but it's okay for the dashboard to just show the cash cost they are racking up.
-        // Wait, if they have free minutes, the cost should be 0 until they run out.
-        // Let's just pass 0 for freeMinutes here to keep it simple, or we'd need the customer object.
-        // Since we don't have the customer object loaded in StationCard by default, we'll assume 0 free minutes for the live ticker.
         const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, 0);
         tempCost = res.cost;
+      }
+      
+      const extMins = activeSession.extended_minutes || 0;
+      if (extMins > 0) {
+        tempCost += (extMins / 60) * station.hourly_rate;
       }
       
       const foodTotal = activeSession.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0);
@@ -151,8 +151,17 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
     return () => clearInterval(timer);
   }, [activeSession, station, rules]);
 
+  const handleExtend = async (mins: number) => {
+    if (!activeSession) return;
+    const currentExtended = activeSession.extended_minutes || 0;
+    await db.sessions.update(activeSession.id, { extended_minutes: currentExtended + mins });
+    setActiveSession({ ...activeSession, extended_minutes: currentExtended + mins });
+  };
+
   return (
-    <Card className="bg-black/40 backdrop-blur-md border-white/10 text-card-foreground flex flex-col shadow-lg hover:border-indigo-500/50 transition-all duration-300">
+    <Card className={`bg-black/40 backdrop-blur-md text-card-foreground flex flex-col shadow-lg transition-all duration-300 ${
+      isMaintenance ? 'opacity-50 grayscale border-dashed border-red-500/30 pointer-events-none cursor-not-allowed' : 'border-white/10 hover:border-indigo-500/50'
+    }`}>
       <CardHeader className="pb-3 border-b border-white/5">
         <div className="flex justify-between items-start">
           <CardTitle className="text-lg font-medium flex items-center gap-2">
@@ -161,7 +170,8 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
             {!isOccupied && isHappyHour && <span className="ml-2 px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-500 uppercase font-bold tracking-wider animate-pulse">Happy Hour</span>}
           </CardTitle>
           <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest ${
-            isOccupied ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
+            isOccupied ? 'bg-red-500/10 text-red-400' : 
+            isMaintenance ? 'bg-orange-500/10 text-orange-400' : 'bg-emerald-500/10 text-emerald-400'
           }`}>
             {station.status}
           </span>
@@ -191,20 +201,30 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
         )}
       </CardContent>
 
-      <CardFooter className="pt-4 border-t border-white/5 flex gap-2">
+      <CardFooter className="pt-4 border-t border-white/5 flex flex-col gap-2">
         {!isOccupied ? (
-          <Button className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/25 transition-all" onClick={onStartClick}>
+          <Button disabled={isMaintenance} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/25 transition-all disabled:opacity-50" onClick={onStartClick}>
             <Play className="w-4 h-4 mr-2" /> Start Session
           </Button>
         ) : (
-          <>
-            <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5" onClick={() => activeSession && onAddFoodClick(activeSession)}>
-              <Plus className="w-4 h-4 mr-2" /> Item
-            </Button>
-            <Button variant="destructive" className="flex-1 bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/20" onClick={() => activeSession && onStopClick(activeSession)}>
-              <Square className="w-4 h-4 mr-2" /> Stop
-            </Button>
-          </>
+          <div className="w-full space-y-2">
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8" onClick={() => handleExtend(30)}>
+                +30 Min
+              </Button>
+              <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8" onClick={() => handleExtend(60)}>
+                +1 Hr
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5" onClick={() => activeSession && onAddFoodClick(activeSession)}>
+                <Plus className="w-4 h-4 mr-2" /> Item
+              </Button>
+              <Button variant="destructive" className="flex-1 bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/20" onClick={() => activeSession && onStopClick(activeSession)}>
+                <Square className="w-4 h-4 mr-2" /> Stop
+              </Button>
+            </div>
+          </div>
         )}
       </CardFooter>
     </Card>

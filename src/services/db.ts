@@ -32,13 +32,16 @@ let settings: AppSettings = {
   cafe_name: 'Brandex Cafe',
   currency_symbol: '₹',
   tax_rate_percent: 18,
-  loyalty_conversion_rate: 10
+  loyalty_conversion_rate: 10,
+  admin_password: 'admin'
 };
+
+let reviewRequests: import('../types').ReviewRequest[] = [];
 
 // Helper to sync with localStorage
 const saveToStorage = () => {
   localStorage.setItem('brandex_db', JSON.stringify({
-    stations, customers, sessions, transactions, menuItems, pricingRules, settings
+    stations, customers, sessions, transactions, menuItems, pricingRules, settings, reviewRequests
   }));
 };
 
@@ -55,6 +58,7 @@ const hydrate = () => {
       if (data.menuItems) menuItems = data.menuItems;
       if (data.pricingRules) pricingRules = data.pricingRules;
       if (data.settings) settings = data.settings;
+      if (data.reviewRequests) reviewRequests = data.reviewRequests;
     } catch (e) {
       console.error('Failed to parse local DB', e);
     }
@@ -165,6 +169,10 @@ export const db = {
     }
   },
   transactions: {
+    getAll: async (): Promise<Transaction[]> => {
+      await delay(200);
+      return [...transactions];
+    },
     add: async (transaction: Omit<Transaction, 'id' | 'timestamp'>): Promise<Transaction> => {
       await delay(200);
       const newTransaction: Transaction = {
@@ -208,6 +216,28 @@ export const db = {
     delete: async (id: string): Promise<void> => {
       await delay(200);
       pricingRules = pricingRules.filter(r => r.id !== id);
+      saveToStorage();
+    }
+  },
+  reviewRequests: {
+    getAll: async (): Promise<import('../types').ReviewRequest[]> => {
+      await delay(200);
+      return [...reviewRequests];
+    },
+    add: async (request: Omit<import('../types').ReviewRequest, 'id' | 'created_at' | 'sent'>): Promise<void> => {
+      await delay(200);
+      const newRequest = {
+        ...request,
+        id: Math.random().toString(36).substring(7),
+        sent: false,
+        created_at: Date.now()
+      };
+      reviewRequests.push(newRequest);
+      saveToStorage();
+    },
+    markSent: async (id: string): Promise<void> => {
+      await delay(200);
+      reviewRequests = reviewRequests.map(r => r.id === id ? { ...r, sent: true } : r);
       saveToStorage();
     }
   }

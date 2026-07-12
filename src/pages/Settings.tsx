@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Plus } from 'lucide-react';
+import { Save, Plus, Download, Upload } from 'lucide-react';
 import { PricingRuleModal } from '../components/PricingRuleModal';
 
 export function Settings() {
@@ -17,7 +17,8 @@ export function Settings() {
     currency_symbol: '',
     tax_rate_percent: '',
     loyalty_conversion_rate: '',
-    session_start_delay_sec: ''
+    session_start_delay_sec: '',
+    admin_password: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -40,7 +41,8 @@ export function Settings() {
       currency_symbol: data.currency_symbol || '',
       tax_rate_percent: data.tax_rate_percent?.toString() || '0',
       loyalty_conversion_rate: data.loyalty_conversion_rate.toString(),
-      session_start_delay_sec: data.session_start_delay_sec?.toString() || '0'
+      session_start_delay_sec: data.session_start_delay_sec?.toString() || '0',
+      admin_password: data.admin_password || 'admin'
     });
   };
 
@@ -53,7 +55,8 @@ export function Settings() {
         currency_symbol: formData.currency_symbol,
         tax_rate_percent: Number(formData.tax_rate_percent),
         loyalty_conversion_rate: Number(formData.loyalty_conversion_rate),
-        session_start_delay_sec: Number(formData.session_start_delay_sec)
+        session_start_delay_sec: Number(formData.session_start_delay_sec),
+        admin_password: formData.admin_password
       });
       await loadSettings();
     } catch (e) {
@@ -61,6 +64,41 @@ export function Settings() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleBackup = () => {
+    try {
+      const data = localStorage.getItem('brandex_db');
+      if (!data) return alert('No data to backup.');
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup_brandex_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Backup failed.');
+    }
+  };
+
+  const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        JSON.parse(content); // Validate JSON
+        localStorage.setItem('brandex_db', content);
+        alert('Data restored successfully! The application will now reload.');
+        window.location.reload();
+      } catch (err) {
+        alert('Invalid backup file.');
+      }
+    };
+    reader.readAsText(file);
   };
 
   if (!settings) return <div className="text-muted-foreground">Loading settings...</div>;
@@ -147,6 +185,51 @@ export function Settings() {
                   />
                   <span className="absolute right-3 top-2.5 text-muted-foreground text-sm">%</span>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Security</CardTitle>
+              <CardDescription>Manage your admin credentials.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2 max-w-xs">
+                <Label>Admin Password</Label>
+                <Input 
+                  type="password" 
+                  value={formData.admin_password} 
+                  onChange={(e) => setFormData({...formData, admin_password: e.target.value})}
+                  className="border-white/10 bg-background/50"
+                  placeholder="New password"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Data Management</CardTitle>
+              <CardDescription>Backup and restore your local database.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-4">
+                <Button onClick={handleBackup} variant="outline" className="border-white/10 gap-2">
+                  <Download className="w-4 h-4" /> Backup Database
+                </Button>
+                <Label htmlFor="restore-upload" className="cursor-pointer">
+                  <div className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-white/10 hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 gap-2">
+                    <Upload className="w-4 h-4" /> Restore Database
+                  </div>
+                </Label>
+                <input 
+                  id="restore-upload" 
+                  type="file" 
+                  accept=".json" 
+                  className="hidden" 
+                  onChange={handleRestore} 
+                />
               </div>
             </CardContent>
           </Card>
