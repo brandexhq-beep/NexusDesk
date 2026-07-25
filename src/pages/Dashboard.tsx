@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from '../services/db';
-import type { Station, Session, PricingRule } from '../types';
+import type { Station, Session, PricingRule, Customer } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -98,13 +98,23 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
   const [currentCost, setCurrentCost] = useState<number>(0);
   const [isHappyHour, setIsHappyHour] = useState(false);
 
+  const [customer, setCustomer] = useState<Customer | null>(null);
+
   useEffect(() => {
     if (isOccupied) {
       db.sessions.getActiveByStation(station.id).then(session => {
-        if (session) setActiveSession(session);
+        if (session) {
+          setActiveSession(session);
+          if (session.customer_id) {
+            db.customers.getById(session.customer_id).then(c => setCustomer(c || null));
+          } else {
+            setCustomer(null);
+          }
+        }
       });
     } else {
       setActiveSession(null);
+      setCustomer(null);
     }
   }, [isOccupied, station.id]);
 
@@ -126,7 +136,9 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
       if (activeSession.combo_id) {
         tempCost = activeSession.base_amount || 0; 
       } else {
-        const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, activeSession.prepaid_duration_mins || 0);
+        const customerFreeMins = customer ? customer.available_minutes : 0;
+        const totalFreeMins = (activeSession.prepaid_duration_mins || 0) + customerFreeMins;
+        const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, totalFreeMins);
         tempCost = (activeSession.base_amount || 0) + res.cost;
       }
       
@@ -142,14 +154,21 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
       const date = new Date(now);
       const dayOfWeek = date.getDay();
       const timeString = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-      const activeRule = rules.find(rule => rule.active && rule.days.includes(dayOfWeek) && timeString >= rule.start_time && timeString < rule.end_time);
+      const activeRule = rules.find(rule => {
+        if (!rule.active || !rule.days.includes(dayOfWeek)) return false;
+        if (rule.start_time <= rule.end_time) {
+          return timeString >= rule.start_time && timeString < rule.end_time;
+        } else {
+          return timeString >= rule.start_time || timeString < rule.end_time;
+        }
+      });
       setIsHappyHour(!!activeRule);
     };
 
     calculateCost();
     const timer = setInterval(calculateCost, 1000);
     return () => clearInterval(timer);
-  }, [activeSession, station, rules]);
+  }, [activeSession, station, rules, customer]);
 
   const handleExtend = async (mins: number) => {
     if (!activeSession) return;
@@ -208,14 +227,16 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
           </Button>
         ) : (
           <div className="w-full space-y-2">
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8" onClick={() => handleExtend(30)}>
-                +30 Min
-              </Button>
-              <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8" onClick={() => handleExtend(60)}>
-                +1 Hr
-              </Button>
-            </div>
+            {(activeSession?.combo_id || activeSession?.prepaid_duration_mins) ? (
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8" onClick={() => handleExtend(30)}>
+                  +30 Min
+                </Button>
+                <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8" onClick={() => handleExtend(60)}>
+                  +1 Hr
+                </Button>
+              </div>
+            ) : null}
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5" onClick={() => activeSession && onAddFoodClick(activeSession)}>
                 <Plus className="w-4 h-4 mr-2" /> Item

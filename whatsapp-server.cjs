@@ -124,19 +124,49 @@ setInterval(async () => {
 
         console.log(`Successfully sent queued message to ${item.chatId}`);
         
-        // Remove from queue
+        // Remove from queue on success
         const updatedQueue = getQueue();
-        updatedQueue.shift();
-        saveQueue(updatedQueue);
+        if (updatedQueue.length > 0 && updatedQueue[0].id === item.id) {
+            updatedQueue.shift();
+            saveQueue(updatedQueue);
+        }
     } catch (error) {
-        console.error(`Failed to send message to ${item.chatId}, will retry later. Error:`, error.message);
-        // We do not shift the queue, so it will retry next interval
+        console.error(`Failed to send message to ${item.chatId}. Error:`, error.message);
+        
+        const updatedQueue = getQueue();
+        if (updatedQueue.length > 0 && updatedQueue[0].id === item.id) {
+            updatedQueue[0].retryCount = (updatedQueue[0].retryCount || 0) + 1;
+            
+            if (updatedQueue[0].retryCount >= 3) {
+                console.warn(`Dropping message to ${item.chatId} after 3 failed retries to prevent queue deadlock.`);
+                updatedQueue.shift();
+            }
+            saveQueue(updatedQueue);
+        }
+        
         // Wait a bit longer if there's an error
         await new Promise(r => setTimeout(r, 5000));
     } finally {
         isProcessingQueue = false;
     }
 }, 3000); // Check queue every 3 seconds
+
+// API Endpoints for Queue Management
+app.get('/whatsapp-queue', (req, res) => {
+    res.json(getQueue());
+});
+
+app.delete('/whatsapp-queue/:id', (req, res) => {
+    const queue = getQueue();
+    const newQueue = queue.filter(item => item.id !== req.params.id);
+    saveQueue(newQueue);
+    res.json({ success: true, message: 'Message deleted from queue.' });
+});
+
+app.post('/whatsapp-queue/clear', (req, res) => {
+    saveQueue([]);
+    res.json({ success: true, message: 'Queue cleared completely.' });
+});
 
 // API Endpoint to check status and get QR code
 app.get('/whatsapp-status', (req, res) => {
@@ -165,7 +195,8 @@ app.post('/send-invoice', async (req, res) => {
 
         // Add to queue
         const queue = getQueue();
-        queue.push({ chatId, message, pdfBase64, pdfName, timestamp: Date.now() });
+        const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        queue.push({ id, retryCount: 0, chatId, message, pdfBase64, pdfName, timestamp: Date.now() });
         saveQueue(queue);
 
         console.log(`Queued message for ${chatId}. Queue length: ${queue.length}`);

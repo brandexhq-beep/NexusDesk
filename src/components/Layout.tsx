@@ -1,6 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Gamepad2, Users, Monitor, LogOut, Coffee, Menu as MenuIcon, LineChart, Settings as Cog } from 'lucide-react';
+import { Gamepad2, Users, Monitor, LogOut, Coffee, Menu as MenuIcon, LineChart, Settings as Cog, Disc } from 'lucide-react';
 import { GlobalAlerts } from './GlobalAlerts';
 import { ReviewQueue } from './ReviewQueue';
 import { db } from '../services/db';
@@ -12,6 +12,7 @@ const navItems = [
   { name: 'Reports', path: '/reports', icon: LineChart },
   { name: 'Stations', path: '/stations', icon: Monitor },
   { name: 'Menu', path: '/menu', icon: MenuIcon },
+  { name: 'Games', path: '/games', icon: Disc },
   { name: 'Settings', path: '/settings', icon: Cog },
 ];
 

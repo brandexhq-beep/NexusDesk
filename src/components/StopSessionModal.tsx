@@ -22,11 +22,13 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   const [paymentMode, setPaymentMode] = useState<string>('cash');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
   const [loading, setLoading] = useState(false);
-  const [bill, setBill] = useState({ gameTime: 0, food: 0, subtotal: 0, discount: 0, total: 0 });
+  const [bill, setBill] = useState({ gameTime: 0, food: 0, subtotal: 0, discount: 0, total: 0, specialDiscountAmt: 0, customDiscountAmt: 0 });
+  const [customDiscount, setCustomDiscount] = useState<number>(0);
   const [conversionRate, setConversionRate] = useState<number>(10);
   const [minutesUsed, setMinutesUsed] = useState<number>(0);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [sendInvoice, setSendInvoice] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     db.settings.get().then(s => {
@@ -93,13 +95,29 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   }, [session, station, rules]);
 
   useEffect(() => {
-    const discount = pointsToRedeem / conversionRate;
+    const ptsDiscount = pointsToRedeem / conversionRate;
+    
+    let spcDiscountPct = 0;
+    if (settings && settings.special_discount_days) {
+      const today = new Date().getDate();
+      if (settings.special_discount_days.includes(today)) {
+        spcDiscountPct = settings.special_discount_percent || 0;
+      }
+    }
+    
+    const specialDiscountAmt = (bill.subtotal * spcDiscountPct) / 100;
+    const customDiscountAmt = (bill.subtotal * customDiscount) / 100;
+    
+    const totalDiscounts = ptsDiscount + specialDiscountAmt + customDiscountAmt;
+    
     setBill(prev => ({
       ...prev,
-      discount,
-      total: Math.max(0, prev.subtotal - discount)
+      discount: ptsDiscount,
+      specialDiscountAmt,
+      customDiscountAmt,
+      total: Math.max(0, prev.subtotal - totalDiscounts)
     }));
-  }, [pointsToRedeem, conversionRate]);
+  }, [pointsToRedeem, conversionRate, bill.subtotal, customDiscount, settings]);
 
   const handleCheckout = async () => {
     if (!session || !station) return;
@@ -138,7 +156,8 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
           type: 'session_charge',
           amount: bill.total,
           points: Math.floor(bill.total / 10), 
-          note: `Session at ${station.name}`
+          note: `Session at ${station.name}`,
+          session_id: session.id
         });
 
         if (pointsToRedeem > 0) {
@@ -147,7 +166,8 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
             type: 'points_redeemed',
             amount: 0,
             points: -pointsToRedeem,
-            note: `Redeemed ${pointsToRedeem} points`
+            note: `Redeemed ${pointsToRedeem} points`,
+            session_id: session.id
           });
         }
 
@@ -161,32 +181,46 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
 
         if (customer.phone && sendInvoice && settings) {
           try {
-            const completedSession = { ...session, status: 'completed' as const, end_time: Date.now(), total_amount: bill.total, payment_mode: paymentMode as any };
+            const completedSession = { 
+              ...session, 
+              status: 'completed' as const, 
+              end_time: Date.now(), 
+              total_amount: bill.total, 
+              base_amount: bill.gameTime,
+              payment_mode: paymentMode as any 
+            };
             
             const invoiceData = {
               customerName: customer.name,
               customerPhone: customer.phone,
               pointsEarned: Math.floor(bill.total / 10),
               pointsRedeemed: pointsToRedeem,
-              discountAmount: bill.discount
+              loyaltyDiscount: bill.discount,
+              specialDiscount: bill.specialDiscountAmt || 0,
+              customDiscount: bill.customDiscountAmt || 0
             };
             
-            const pdfBase64 = generateInvoicePDF(completedSession, station, settings, invoiceData);
+            const pdfBlob = await generateInvoicePDF(completedSession, station, settings, invoiceData);
             
-            const googleReviewLink = settings.google_review_url || "https://g.page/r/YOUR_UNIQUE_LINK/review";
-            const cafeName = settings.cafe_name || "us";
-            const message = `Hi ${customer.name},\n\nThank you for choosing ${cafeName}! Attached is your invoice for today's session.\n\nIf you have a moment, please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
+            const reader = new FileReader();
+            reader.readAsDataURL(pdfBlob);
+            reader.onloadend = () => {
+              const base64data = (reader.result as string).split(',')[1];
+              const googleReviewLink = settings.google_review_url || "https://g.page/r/YOUR_UNIQUE_LINK/review";
+              const cafeName = settings.cafe_name || "us";
+              const message = `Hi ${customer.name},\n\nThank you for choosing ${cafeName}! Attached is your invoice for today's session.\n\nIf you have a moment, please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
 
-            fetch('http://localhost:3001/send-invoice', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                phone: customer.phone,
-                message,
-                pdfBase64,
-                pdfName: `Invoice_${customer.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`
-              })
-            }).catch(console.error); // Fire and forget so we don't block closing
+              fetch('http://localhost:3001/send-invoice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  phone: customer.phone,
+                  message,
+                  pdfBase64: base64data,
+                  pdfName: `Invoice_${customer.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`
+                })
+              }).catch(console.error); // Fire and forget so we don't block closing
+            };
           } catch (pdfErr) {
             console.error('Failed to generate/send immediate invoice:', pdfErr);
           }
@@ -210,6 +244,62 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
       setLoading(false);
     }
   };
+
+  const handlePreviewPDF = async () => {
+    if (!settings || !station || !session) return;
+    const completedSession = { 
+      ...session, 
+      status: 'completed' as const, 
+      end_time: Date.now(), 
+      total_amount: bill.total, 
+      base_amount: bill.gameTime, // Fix: pass calculated dynamic time cost to PDF
+      payment_mode: paymentMode as any 
+    };
+    const invoiceData = {
+      customerName: customer ? customer.name : 'Walk-in',
+      customerPhone: customer ? customer.phone : '',
+      pointsEarned: Math.floor(bill.total / 10),
+      pointsRedeemed: pointsToRedeem,
+      loyaltyDiscount: bill.discount,
+      specialDiscount: bill.specialDiscountAmt || 0,
+      customDiscount: bill.customDiscountAmt || 0
+    };
+    try {
+      const pdfBlob = await generateInvoicePDF(completedSession, station, settings, invoiceData);
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      setPdfPreviewUrl(pdfUrl);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to generate PDF preview.');
+    }
+  };
+
+  if (pdfPreviewUrl) {
+    return (
+      <Dialog open={true} onOpenChange={(open) => !open && setPdfPreviewUrl(null)}>
+        <DialogContent className="bg-card text-card-foreground border-border max-w-sm h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Bill Preview (POS Format)</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 w-full bg-white rounded-md overflow-hidden border border-border">
+            <iframe src={pdfPreviewUrl} className="w-full h-full" title="PDF Preview" />
+          </div>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" onClick={() => setPdfPreviewUrl(null)} className="w-full">Close Preview</Button>
+            <Button onClick={() => {
+              const newWindow = window.open();
+              if (newWindow) {
+                newWindow.document.write(`<iframe width='100%' height='100%' src='${pdfPreviewUrl}' style='border:none'></iframe>`);
+                setTimeout(() => newWindow.print(), 500);
+              }
+            }} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white">
+              Print
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={!!session} onOpenChange={(open) => !open && onClose()}>
@@ -242,6 +332,18 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
                  <span>- ₹ {bill.discount.toFixed(2)}</span>
                </div>
             )}
+            {bill.specialDiscountAmt > 0 && (
+               <div className="flex justify-between text-emerald-500">
+                 <span>Special Day Discount</span>
+                 <span>- ₹ {bill.specialDiscountAmt.toFixed(2)}</span>
+               </div>
+            )}
+            {bill.customDiscountAmt > 0 && (
+               <div className="flex justify-between text-emerald-500">
+                 <span>Custom Discount</span>
+                 <span>- ₹ {bill.customDiscountAmt.toFixed(2)}</span>
+               </div>
+            )}
             <div className="border-t border-border pt-2 mt-2 flex justify-between font-bold text-lg text-foreground">
               <span>Total Bill</span>
               <span>₹ {bill.total.toFixed(2)}</span>
@@ -267,6 +369,22 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
                 <Button variant="secondary" onClick={() => setPointsToRedeem(customer.loyalty_points)}>Max</Button>
               </div>
               <p className="text-xs text-muted-foreground">{conversionRate} Points = ₹ 1 Discount</p>
+            </div>
+          )}
+
+          {customer && (
+            <div className="space-y-2">
+              <Label htmlFor="customDiscount">Custom Discount for Regulars</Label>
+              <Select value={customDiscount.toString()} onValueChange={(v) => setCustomDiscount(Number(v))}>
+                <SelectTrigger id="customDiscount" className="border-border">
+                  <SelectValue placeholder="No Discount" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">None (0%)</SelectItem>
+                  <SelectItem value="10">10% Off</SelectItem>
+                  <SelectItem value="20">20% Off</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           )}
 
@@ -298,11 +416,14 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading} className="border-border">Cancel</Button>
-          <Button onClick={handleCheckout} disabled={loading} className="bg-primary text-primary-foreground hover:bg-primary/90">
-            {loading ? 'Processing...' : 'Complete Checkout'}
-          </Button>
+        <DialogFooter className="w-full sm:justify-between items-center">
+          <Button variant="ghost" onClick={handlePreviewPDF} className="text-indigo-400">Preview Bill</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose} disabled={loading} className="border-border">Cancel</Button>
+            <Button onClick={handleCheckout} disabled={loading} className="bg-primary text-primary-foreground hover:bg-primary/90">
+              {loading ? 'Processing...' : 'Complete Checkout'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

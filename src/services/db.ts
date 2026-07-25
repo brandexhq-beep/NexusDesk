@@ -1,4 +1,4 @@
-import type { Station, Customer, Session, Transaction, MenuItem, AppSettings, PricingRule } from '../types';
+import type { Station, Customer, Session, Transaction, MenuItem, AppSettings, PricingRule, Game } from '../types';
 
 // Mock Data
 let stations: Station[] = [
@@ -24,6 +24,11 @@ let menuItems: MenuItem[] = [
   { id: 'pkg-15', name: '15 Hour Package', price: 1000, category: 'package', active: true, package_minutes: 900 },
 ];
 
+let games: Game[] = [
+  { id: 'g1', name: 'FIFA 24', total_copies: 2, active: true },
+  { id: 'g2', name: 'GTA V', total_copies: 1, active: true }
+];
+
 let pricingRules: PricingRule[] = [
   { id: '1', name: 'Weekday Happy Hour', days: [1, 2, 3, 4, 5], start_time: '10:00', end_time: '16:00', fixed_hourly_rate: 80, active: true }
 ];
@@ -31,7 +36,6 @@ let pricingRules: PricingRule[] = [
 let settings: AppSettings = {
   cafe_name: 'Brandex Cafe',
   currency_symbol: '₹',
-  tax_rate_percent: 18,
   loyalty_conversion_rate: 10,
   admin_password: 'admin',
   google_review_url: 'https://g.page/r/YOUR_UNIQUE_LINK/review',
@@ -43,7 +47,7 @@ let reviewRequests: import('../types').ReviewRequest[] = [];
 // Helper to sync with localStorage
 const saveToStorage = () => {
   localStorage.setItem('brandex_db', JSON.stringify({
-    stations, customers, sessions, transactions, menuItems, pricingRules, settings, reviewRequests
+    stations, customers, sessions, transactions, menuItems, pricingRules, settings, reviewRequests, games
   }));
 };
 
@@ -61,6 +65,7 @@ const hydrate = () => {
       if (data.pricingRules) pricingRules = data.pricingRules;
       if (data.settings) settings = data.settings;
       if (data.reviewRequests) reviewRequests = data.reviewRequests;
+      if (data.games) games = data.games;
     } catch (e) {
       console.error('Failed to parse local DB', e);
     }
@@ -267,6 +272,33 @@ export const db = {
       hydrate();
       await delay(200);
       reviewRequests = reviewRequests.map(r => r.id === id ? { ...r, sent: true } : r);
+      saveToStorage();
+    }
+  },
+  games: {
+    getAll: async (): Promise<Game[]> => {
+      hydrate();
+      await delay(200);
+      return [...games];
+    },
+    add: async (game: Omit<Game, 'id'>): Promise<Game> => {
+      hydrate();
+      await delay(200);
+      const newGame = { ...game, id: crypto.randomUUID() };
+      games.push(newGame);
+      saveToStorage();
+      return newGame;
+    },
+    update: async (id: string, data: Partial<Game>): Promise<void> => {
+      hydrate();
+      await delay(200);
+      games = games.map(g => g.id === id ? { ...g, ...data } : g);
+      saveToStorage();
+    },
+    delete: async (id: string): Promise<void> => {
+      hydrate();
+      await delay(200);
+      games = games.filter(g => g.id !== id);
       saveToStorage();
     }
   }

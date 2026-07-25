@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle } from 'lucide-react';
+import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle } from 'lucide-react';
 import { PricingRuleModal } from '../components/PricingRuleModal';
 import { QRCodeCanvas } from 'qrcode.react';
 
@@ -16,12 +16,16 @@ export function Settings() {
     cafe_name: '',
     cafe_logo_url: '',
     currency_symbol: '',
-    tax_rate_percent: '',
     loyalty_conversion_rate: '',
     session_start_delay_sec: '',
     admin_password: '',
     google_review_url: '',
-    review_delay_mins: ''
+    review_delay_mins: '',
+    special_discount_days: '',
+    special_discount_percent: '',
+    invoice_footer_msg: '',
+    invoice_qr_type: 'none',
+    invoice_upi_id: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +35,7 @@ export function Settings() {
 
   // WhatsApp status state
   const [waStatus, setWaStatus] = useState<{ready: boolean, qr: string | null}>({ ready: false, qr: null });
+  const [waQueue, setWaQueue] = useState<any[]>([]);
   const waIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -49,12 +54,16 @@ export function Settings() {
       cafe_name: data.cafe_name || '',
       cafe_logo_url: data.cafe_logo_url || '',
       currency_symbol: data.currency_symbol || '',
-      tax_rate_percent: data.tax_rate_percent?.toString() || '0',
       loyalty_conversion_rate: data.loyalty_conversion_rate.toString(),
       session_start_delay_sec: data.session_start_delay_sec?.toString() || '0',
       admin_password: data.admin_password || 'admin',
       google_review_url: data.google_review_url || '',
-      review_delay_mins: data.review_delay_mins?.toString() || '30'
+      review_delay_mins: data.review_delay_mins?.toString() || '30',
+      special_discount_days: data.special_discount_days?.join(', ') || '',
+      special_discount_percent: data.special_discount_percent?.toString() || '0',
+      invoice_footer_msg: data.invoice_footer_msg || '',
+      invoice_qr_type: data.invoice_qr_type || 'none',
+      invoice_upi_id: data.invoice_upi_id || ''
     });
   };
 
@@ -64,6 +73,16 @@ export function Settings() {
         const res = await fetch('http://localhost:3001/whatsapp-status');
         const json = await res.json();
         setWaStatus(json);
+        
+        try {
+          const queueRes = await fetch('http://localhost:3001/whatsapp-queue');
+          if (queueRes.ok) {
+            const queueJson = await queueRes.json();
+            setWaQueue(queueJson);
+          }
+        } catch (eq) {
+          // Ignore queue fetch error silently
+        }
       } catch (e) {
         setWaStatus({ ready: false, qr: null });
       }
@@ -79,6 +98,25 @@ export function Settings() {
     }
   };
 
+  const handleClearQueue = async () => {
+    if (!window.confirm('Are you sure you want to clear the entire WhatsApp queue? This will drop all pending messages.')) return;
+    try {
+      await fetch('http://localhost:3001/whatsapp-queue/clear', { method: 'POST' });
+      setWaQueue([]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteQueueItem = async (id: string) => {
+    try {
+      await fetch(`http://localhost:3001/whatsapp-queue/${id}`, { method: 'DELETE' });
+      setWaQueue(prev => prev.filter(item => item.id !== id));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleSave = async () => {
     setLoading(true);
     try {
@@ -86,12 +124,16 @@ export function Settings() {
         cafe_name: formData.cafe_name,
         cafe_logo_url: formData.cafe_logo_url,
         currency_symbol: formData.currency_symbol,
-        tax_rate_percent: Number(formData.tax_rate_percent),
         loyalty_conversion_rate: Number(formData.loyalty_conversion_rate),
         session_start_delay_sec: Number(formData.session_start_delay_sec),
         admin_password: formData.admin_password,
         google_review_url: formData.google_review_url,
-        review_delay_mins: Number(formData.review_delay_mins)
+        review_delay_mins: Number(formData.review_delay_mins),
+        special_discount_days: formData.special_discount_days.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n)),
+        special_discount_percent: Number(formData.special_discount_percent),
+        invoice_footer_msg: formData.invoice_footer_msg,
+        invoice_qr_type: formData.invoice_qr_type as any,
+        invoice_upi_id: formData.invoice_upi_id
       });
       await loadSettings();
     } catch (e) {
@@ -148,8 +190,9 @@ export function Settings() {
       </div>
 
       <Tabs defaultValue="general" className="w-full" onValueChange={(val) => val === 'whatsapp' ? startWhatsAppPolling() : stopWhatsAppPolling()}>
-        <TabsList className="grid w-full grid-cols-4 max-w-2xl bg-black/40 border border-white/5 mb-6">
+        <TabsList className="grid w-full grid-cols-5 max-w-3xl bg-black/40 border border-white/5 mb-6">
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="invoice">Invoice</TabsTrigger>
           <TabsTrigger value="pricing">Dynamic Pricing</TabsTrigger>
           <TabsTrigger value="loyalty">Loyalty System</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
@@ -165,31 +208,6 @@ export function Settings() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Cafe Name</Label>
-                  <Input 
-                    value={formData.cafe_name} 
-                    onChange={(e) => setFormData({...formData, cafe_name: e.target.value})}
-                    className="border-white/10 bg-background/50"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Logo Image/GIF URL</Label>
-                  <Input 
-                    value={formData.cafe_logo_url} 
-                    onChange={(e) => setFormData({...formData, cafe_logo_url: e.target.value})}
-                    placeholder="https://example.com/logo.gif"
-                    className="border-white/10 bg-background/50"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Currency Symbol</Label>
-                  <Input 
-                    value={formData.currency_symbol} 
-                    onChange={(e) => setFormData({...formData, currency_symbol: e.target.value})}
-                    className="border-white/10 bg-background/50"
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label>Session Start Delay (Seconds)</Label>
                   <Input 
                     type="number" min="0"
@@ -199,27 +217,6 @@ export function Settings() {
                     className="border-white/10 bg-background/50"
                   />
                   <p className="text-[10px] text-muted-foreground">Countdown delay before a session starts tracking time.</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-black/40 backdrop-blur-md border-white/10">
-            <CardHeader>
-              <CardTitle className="text-card-foreground">Billing & Taxes</CardTitle>
-              <CardDescription>Default tax configurations applied to checkout.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2 max-w-xs">
-                <Label>Tax Rate (%)</Label>
-                <div className="relative">
-                  <Input 
-                    type="number" 
-                    value={formData.tax_rate_percent} 
-                    onChange={(e) => setFormData({...formData, tax_rate_percent: e.target.value})}
-                    className="border-white/10 bg-background/50 pr-8"
-                  />
-                  <span className="absolute right-3 top-2.5 text-muted-foreground text-sm">%</span>
                 </div>
               </div>
             </CardContent>
@@ -271,6 +268,95 @@ export function Settings() {
           </Card>
         </TabsContent>
 
+        {/* INVOICE TAB */}
+        <TabsContent value="invoice" className="space-y-6">
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Invoice & Receipt Settings</CardTitle>
+              <CardDescription>Configure the appearance and data printed on the POS receipt.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Cafe Name (Printed on Receipt)</Label>
+                  <Input 
+                    value={formData.cafe_name} 
+                    onChange={(e) => setFormData({...formData, cafe_name: e.target.value})}
+                    className="border-white/10 bg-background/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Currency Symbol</Label>
+                  <Input 
+                    value={formData.currency_symbol} 
+                    onChange={(e) => setFormData({...formData, currency_symbol: e.target.value})}
+                    className="border-white/10 bg-background/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Logo Image/GIF URL (Printed if available)</Label>
+                  <Input 
+                    value={formData.cafe_logo_url} 
+                    onChange={(e) => setFormData({...formData, cafe_logo_url: e.target.value})}
+                    placeholder="https://example.com/logo.gif"
+                    className="border-white/10 bg-background/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Invoice Footer Message</Label>
+                  <Input 
+                    value={formData.invoice_footer_msg} 
+                    onChange={(e) => setFormData({...formData, invoice_footer_msg: e.target.value})}
+                    placeholder="Thank you for playing with us!"
+                    className="border-white/10 bg-background/50"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Receipt QR Code</CardTitle>
+              <CardDescription>Embed a dynamic QR code at the bottom of the printed receipt.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>QR Code Type</Label>
+                  <select
+                    value={formData.invoice_qr_type}
+                    onChange={(e) => setFormData({...formData, invoice_qr_type: e.target.value})}
+                    className="flex h-10 w-full rounded-md border border-input bg-background/50 border-white/10 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="none">None</option>
+                    <option value="review">Google Review Link</option>
+                    <option value="upi">UPI Payment (Dynamic Amount)</option>
+                  </select>
+                </div>
+
+                {formData.invoice_qr_type === 'upi' && (
+                  <div className="space-y-2 max-w-md">
+                    <Label>UPI ID (e.g. yourname@okaxis)</Label>
+                    <Input 
+                      value={formData.invoice_upi_id} 
+                      onChange={(e) => setFormData({...formData, invoice_upi_id: e.target.value})}
+                      placeholder="yourname@bank"
+                      className="border-white/10 bg-background/50"
+                    />
+                    <p className="text-[10px] text-muted-foreground">The generated QR code will automatically request the final bill amount.</p>
+                  </div>
+                )}
+                {formData.invoice_qr_type === 'review' && (
+                  <p className="text-xs text-muted-foreground bg-white/5 p-3 rounded-lg border border-white/10">
+                    The QR code will point to your configured Google Review URL in the WhatsApp settings tab.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* PRICING TAB */}
         <TabsContent value="pricing">
           <Card className="bg-black/40 backdrop-blur-md border-white/10">
@@ -312,6 +398,39 @@ export function Settings() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10 mt-6">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Special Discount Days</CardTitle>
+              <CardDescription>Automatically apply a discount on specific days of the month.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Discount Days (Comma separated)</Label>
+                  <Input 
+                    value={formData.special_discount_days} 
+                    onChange={(e) => setFormData({...formData, special_discount_days: e.target.value})}
+                    placeholder="e.g. 16, 17"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Days of the month when discount applies.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Global Discount (%)</Label>
+                  <div className="relative">
+                    <Input 
+                      type="number" min="0" max="100"
+                      value={formData.special_discount_percent} 
+                      onChange={(e) => setFormData({...formData, special_discount_percent: e.target.value})}
+                      className="border-white/10 bg-background/50 pr-8"
+                    />
+                    <span className="absolute right-3 top-2.5 text-muted-foreground text-sm">%</span>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -404,6 +523,46 @@ export function Settings() {
                   <p className="text-[10px] text-muted-foreground">How many minutes after a session ends should the review link be sent?</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader className="flex flex-row items-center justify-between pb-4">
+              <div>
+                <CardTitle className="text-card-foreground">WhatsApp Outbound Queue</CardTitle>
+                <CardDescription>Monitor and manage pending messages. Failing messages drop automatically after 3 retries.</CardDescription>
+              </div>
+              <Button onClick={handleClearQueue} variant="destructive" size="sm" className="bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/20">
+                Clear Entire Queue
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {waQueue.length === 0 ? (
+                <div className="text-muted-foreground text-sm py-8 text-center border border-dashed border-white/10 rounded-lg">Queue is currently empty.</div>
+              ) : (
+                <div className="space-y-3">
+                  {waQueue.map((item, idx) => (
+                    <div key={item.id || idx} className="flex items-center justify-between p-3 border border-white/5 rounded-xl bg-black/20">
+                      <div className="flex-1 overflow-hidden">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-foreground text-sm">{item.chatId.replace('@c.us', '')}</span>
+                          <span className="text-xs text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</span>
+                          {(item.retryCount || 0) > 0 && (
+                            <span className="flex items-center gap-1 text-[10px] bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded font-bold">
+                              <AlertCircle className="w-3 h-3" /> Retry {item.retryCount}/3
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate max-w-[400px]">{item.message}</p>
+                        {item.pdfName && <p className="text-[10px] text-indigo-400 mt-1">📎 {item.pdfName}</p>}
+                      </div>
+                      <Button onClick={() => handleDeleteQueueItem(item.id)} variant="ghost" size="icon" className="text-muted-foreground hover:text-red-400 hover:bg-red-400/10 h-8 w-8 ml-4 shrink-0">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

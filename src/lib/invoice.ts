@@ -1,44 +1,50 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { Session, Station, AppSettings } from '../types';
+import QRCode from 'qrcode';
 
 export interface InvoiceData {
   customerName: string;
   customerPhone: string;
   pointsEarned: number;
   pointsRedeemed: number;
-  discountAmount: number;
+  loyaltyDiscount: number;
+  specialDiscount: number;
+  customDiscount: number;
 }
 
-export const generateInvoicePDF = (
+export const generateInvoicePDF = async (
   session: Session, 
   station: Station, 
   settings: AppSettings, 
   invoiceData: InvoiceData
-): string => {
-  const doc = new jsPDF();
+): Promise<Blob> => {
+  // 80mm receipt width (approx 3.15 inches) for POS thermal printers
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: [80, 250] 
+  });
   
   // Header
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(24);
-  doc.setTextColor(31, 41, 55); // Gray-800
-  doc.text(settings.cafe_name || 'INVOICE', 14, 20);
+  doc.setFontSize(16);
+  doc.setTextColor(0, 0, 0); 
+  doc.text(settings.cafe_name || 'INVOICE', 40, 15, { align: 'center' });
   
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(75, 85, 99); // Gray-600
+  doc.setFontSize(9);
+  doc.setTextColor(0, 0, 0); 
   
-  // Format dates
   const startDate = new Date(session.start_time);
   const endDate = session.end_time ? new Date(session.end_time) : new Date();
   
-  doc.text(`Date: ${startDate.toLocaleDateString()}`, 14, 30);
-  doc.text(`Time: ${startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${endDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`, 14, 35);
-  doc.text(`Customer: ${invoiceData.customerName}`, 14, 40);
-  doc.text(`Phone: ${invoiceData.customerPhone}`, 14, 45);
-  doc.text(`Station: ${station.name}`, 14, 50);
+  doc.text(`Date: ${startDate.toLocaleDateString()}`, 5, 25);
+  doc.text(`Time: ${startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${endDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`, 5, 30);
+  doc.text(`Customer: ${invoiceData.customerName}`, 5, 35);
+  doc.text(`Phone: ${invoiceData.customerPhone}`, 5, 40);
+  doc.text(`Station: ${station.name}`, 5, 45);
   
-  // jsPDF standard fonts don't support unicode ₹ well, use Rs. instead for PDF
   const currencyStr = settings.currency_symbol === '₹' ? 'Rs.' : settings.currency_symbol;
 
   // Itemize bill
@@ -59,45 +65,76 @@ export const generateInvoicePDF = (
     tableData.push([order.name, order.quantity.toString(), `${currencyStr} ${(order.price_at_order * order.quantity).toFixed(2)}`]);
   });
   
-  if (invoiceData.discountAmount > 0) {
-    tableData.push([`Loyalty Discount (${invoiceData.pointsRedeemed} pts)`, '1', `- ${currencyStr} ${invoiceData.discountAmount.toFixed(2)}`]);
+  if (invoiceData.loyaltyDiscount > 0) {
+    tableData.push([`Loyalty Discount (${invoiceData.pointsRedeemed} pts)`, '1', `- ${currencyStr} ${invoiceData.loyaltyDiscount.toFixed(2)}`]);
+  }
+  if (invoiceData.specialDiscount > 0) {
+    tableData.push(['Special Discount', '1', `- ${currencyStr} ${invoiceData.specialDiscount.toFixed(2)}`]);
+  }
+  if (invoiceData.customDiscount > 0) {
+    tableData.push(['Custom Discount', '1', `- ${currencyStr} ${invoiceData.customDiscount.toFixed(2)}`]);
   }
   
   autoTable(doc, {
-    startY: 60,
-    head: [['Description', 'Qty', 'Amount']],
+    startY: 50,
+    margin: { left: 5, right: 5 },
+    head: [['Item', 'Qty', 'Amt']],
     body: tableData,
-    theme: 'grid',
-    headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' }, // Indigo-600
-    styles: { font: 'helvetica', fontSize: 10, textColor: [55, 65, 81] },
-    alternateRowStyles: { fillColor: [249, 250, 251] }
+    theme: 'plain',
+    headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: { bottom: 0.5 } },
+    styles: { font: 'helvetica', fontSize: 9, textColor: [0, 0, 0], cellPadding: 1 },
+    columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 10, halign: 'center' }, 2: { halign: 'right' } }
   });
   
-  const finalY = (doc as any).lastAutoTable.finalY || 60;
+  const finalY = (doc as any).lastAutoTable.finalY || 50;
+  
+  doc.setLineWidth(0.5);
+  doc.line(5, finalY + 2, 75, finalY + 2);
   
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(17, 24, 39); // Gray-900
-  doc.text(`Total: ${currencyStr} ${session.total_amount.toFixed(2)}`, 14, finalY + 12);
+  doc.setFontSize(12);
+  doc.text('Total:', 5, finalY + 8);
+  doc.text(`${currencyStr} ${session.total_amount.toFixed(2)}`, 75, finalY + 8, { align: 'right' });
   
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(22, 163, 74); // Green-600
-  doc.text(`+ ${invoiceData.pointsEarned} Loyalty Points Earned!`, 14, finalY + 22);
+  doc.setFontSize(9);
+  doc.text(`+ ${invoiceData.pointsEarned} Loyalty Pts!`, 40, finalY + 16, { align: 'center' });
   
   doc.setFont('helvetica', 'italic');
-  doc.setFontSize(10);
-  doc.setTextColor(107, 114, 128); // Gray-500
-  doc.text('Thank you for playing with us!', 14, finalY + 32);
-  
-  // Optional Logo Image if it's a valid data URL
-  if (settings.cafe_logo_url && settings.cafe_logo_url.startsWith('data:image')) {
+  doc.setFontSize(9);
+  const footerMsg = settings.invoice_footer_msg || 'Thank you!';
+  doc.text(footerMsg, 40, finalY + 22, { align: 'center' });
+
+  let currentY = finalY + 28;
+
+  if (settings.invoice_qr_type && settings.invoice_qr_type !== 'none') {
     try {
-      doc.addImage(settings.cafe_logo_url, 'PNG', 160, 10, 30, 30);
+      let qrValue = '';
+      if (settings.invoice_qr_type === 'upi' && settings.invoice_upi_id) {
+        qrValue = `upi://pay?pa=${settings.invoice_upi_id}&pn=${encodeURIComponent(settings.cafe_name || 'Cafe')}&am=${session.total_amount.toFixed(2)}&cu=INR`;
+      } else if (settings.invoice_qr_type === 'review' && settings.google_review_url) {
+        qrValue = settings.google_review_url;
+      }
+
+      if (qrValue) {
+        // Generate QR code as Base64 data URL
+        const qrBase64 = await QRCode.toDataURL(qrValue, { errorCorrectionLevel: 'M', margin: 1 });
+        // Centered QR Code: 80mm wide page. x = 25, width = 30
+        doc.addImage(qrBase64, 'PNG', 25, currentY, 30, 30);
+        currentY += 32;
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        if (settings.invoice_qr_type === 'upi') {
+          doc.text('Scan to Pay via UPI', 40, currentY, { align: 'center' });
+        } else {
+          doc.text('Scan to leave a Review!', 40, currentY, { align: 'center' });
+        }
+      }
     } catch (e) {
-      console.error('Failed to render logo to PDF', e);
+      console.error('Error generating QR for invoice:', e);
     }
   }
 
-  return doc.output('datauristring');
+  return doc.output('blob');
 };

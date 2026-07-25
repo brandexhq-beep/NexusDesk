@@ -11,8 +11,8 @@ export function calculateDynamicCost(
   let minutesUsed = 0;
   
   const startMins = Math.floor(startTimeMs / 60000);
-  const endMins = Math.floor(endTimeMs / 60000);
-  const totalDurationMins = endMins - startMins;
+  const totalDurationMins = Math.ceil((endTimeMs - startTimeMs) / 60000);
+  const endMins = startMins + totalDurationMins;
 
   const graceMins = station.grace_period_minutes || 0;
   if (totalDurationMins <= graceMins) {

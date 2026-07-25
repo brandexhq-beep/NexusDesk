@@ -4,6 +4,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Customers } from './pages/Customers';
 import { Stations } from './pages/Stations';
 import { Menu } from './pages/Menu';
+import { Games } from './pages/Games';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { Login } from './pages/Login';
@@ -33,6 +34,7 @@ function App() {
             <Route path="customers" element={<Customers />} />
             <Route path="stations" element={<Stations />} />
             <Route path="menu" element={<Menu />} />
+            <Route path="games" element={<Games />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<Settings />} />
           </Route>

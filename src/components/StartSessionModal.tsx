@@ -5,7 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
-import type { Station, Customer, MenuItem } from '../types';
+import type { Station, Customer, MenuItem, Game } from '../types';
+import { X } from 'lucide-react';
 
 interface StartSessionModalProps {
   station: Station | null;
@@ -25,6 +26,8 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [delaySecs, setDelaySecs] = useState<number>(0);
+  const [games, setGames] = useState<{game: Game, available: number}[]>([]);
+  const [selectedGameIds, setSelectedGameIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (station) {
@@ -34,6 +37,16 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
       });
       db.settings.get().then(settings => {
         setDelaySecs(settings.session_start_delay_sec || 0);
+      });
+      Promise.all([db.games.getAll(), db.sessions.getAll()]).then(([allGames, allSessions]) => {
+        const activeSessions = allSessions.filter(s => s.status === 'active');
+        const availableGames = allGames.map(game => {
+          const inUse = activeSessions.reduce((count, s) => {
+            return count + (s.game_ids?.includes(game.id) ? 1 : 0);
+          }, 0);
+          return { game, available: Math.max(0, game.total_copies - inUse) };
+        });
+        setGames(availableGames);
       });
     } else {
       setCountdown(null);
@@ -64,12 +77,14 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
         food_amount: 0,
         total_amount: 0,
         payment_mode: null,
-        status: 'active'
+        status: 'active',
+        game_ids: selectedGameIds
       });
 
       await db.stations.update(station.id, { status: 'occupied' });
       onStart();
       onClose();
+      setSelectedGameIds([]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -231,6 +246,43 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
               </SelectContent>
             </Select>
           </div>
+          
+          {games.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              <Label>Attach Games (Optional)</Label>
+              <div className="flex flex-wrap gap-2">
+                {games.map(g => {
+                  const isSelected = selectedGameIds.includes(g.game.id);
+                  const canSelect = g.available > 0 || isSelected;
+                  
+                  if (!canSelect && !isSelected) return null;
+                  
+                  return (
+                    <button
+                      key={g.game.id}
+                      type="button"
+                      disabled={!canSelect}
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedGameIds(prev => prev.filter(id => id !== g.game.id));
+                        } else {
+                          setSelectedGameIds(prev => [...prev, g.game.id]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-md text-sm transition-all border flex items-center gap-1 ${
+                        isSelected 
+                          ? 'bg-indigo-500 text-white border-indigo-600' 
+                          : 'bg-black/20 text-muted-foreground border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      {g.game.name}
+                      {isSelected && <X className="w-3 h-3 ml-1" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
         )}
 

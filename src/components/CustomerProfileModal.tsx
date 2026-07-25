@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { db } from '../services/db';
 import type { Customer, Session, Station } from '../types';
+import { SessionDetailsModal } from './SessionDetailsModal';
 
 interface CustomerProfileModalProps {
   customer: Customer | null;
@@ -13,6 +14,7 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
   const [sessions, setSessions] = useState<Session[]>([]);
   const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
 
   useEffect(() => {
     if (customer) {
@@ -75,7 +77,11 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
                 const durationMins = s.end_time ? Math.floor((Number(s.end_time) - Number(s.start_time)) / 60000) : 0;
                 
                 return (
-                  <div key={s.id} className="flex items-center justify-between p-3 border border-white/5 rounded-lg bg-black/10 hover:bg-black/30 transition-colors">
+                  <div 
+                    key={s.id} 
+                    onClick={() => setSelectedSession(s)}
+                    className="flex items-center justify-between p-3 border border-white/5 rounded-lg bg-black/10 hover:bg-black/30 transition-colors cursor-pointer"
+                  >
                     <div>
                       <div className="font-medium">{getStationName(s.station_id)}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">
@@ -97,6 +103,11 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
           <Button onClick={onClose} variant="outline" className="w-full">Close Profile</Button>
         </DialogFooter>
       </DialogContent>
+      <SessionDetailsModal 
+        session={selectedSession} 
+        station={stations.find(st => st.id === selectedSession?.station_id)}
+        onClose={() => setSelectedSession(null)} 
+      />
     </Dialog>
   );
 }

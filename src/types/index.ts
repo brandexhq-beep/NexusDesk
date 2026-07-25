@@ -1,5 +1,12 @@
 export type StationType = 'ps5' | 'ps5_vr' | 'ps5_simracing' | 'snooker' | 'pc' | string;
 
+export interface Game {
+  id: string;
+  name: string;
+  total_copies: number;
+  active: boolean;
+}
+
 export interface ReviewRequest {
   id: string;
   customer_id: string;
@@ -60,6 +67,7 @@ export interface Session {
   status: SessionStatus;
   extended_minutes?: number;
   warning_sent?: boolean;
+  game_ids?: string[];
 }
 
 export type MenuCategory = 'snack' | 'drink' | 'combo' | 'package';
@@ -84,18 +92,23 @@ export interface Transaction {
   points: number;
   timestamp: number | Date;
   note: string;
+  session_id?: string;
 }
 
 export interface AppSettings {
   cafe_name: string;
   cafe_logo_url?: string;
   currency_symbol: string;
-  tax_rate_percent: number;
   loyalty_conversion_rate: number; // e.g. 10 means 10 points = 1 currency unit
   session_start_delay_sec?: number;
   admin_password?: string;
   google_review_url?: string;
   review_delay_mins?: number; // Configurable delay for automated WhatsApp review requests
+  special_discount_days?: number[];
+  special_discount_percent?: number;
+  invoice_footer_msg?: string;
+  invoice_qr_type?: 'none' | 'review' | 'upi';
+  invoice_upi_id?: string;
 }
 
 export interface PricingRule {
