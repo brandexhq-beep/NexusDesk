@@ -14,21 +14,44 @@ interface AddFoodModalProps {
 export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<SessionOrder[]>([]);
+  const [originalCart, setOriginalCart] = useState<SessionOrder[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (session) {
       db.menu.getAll().then(data => {
-        setItems(data.filter(i => i.active && i.category !== 'combo'));
+        setItems(data.filter(i => i.active && i.category !== 'combo' && i.category !== 'package'));
       });
       // Initialize cart from session
       setCart([...session.orders]);
+      setOriginalCart([...session.orders]);
     } else {
       setCart([]);
+      setOriginalCart([]);
     }
   }, [session]);
 
+  const getAvailableStock = (item: MenuItem) => {
+    const cartItem = cart.find(o => o.item_id === item.id);
+    const originalItem = originalCart.find(o => o.item_id === item.id);
+    
+    const initialStock = item.stock_quantity || 0;
+    // The amount they had in cart before they opened the modal doesn't count against current stock 
+    // because it was already deducted when they previously saved.
+    // So current physical stock = initialStock
+    // If they increase quantity, they consume from initialStock.
+    // Actually, it's easier to think of remaining allowed to add:
+    // Available to add = initialStock - (currentCartQty - originalCartQty)
+    
+    const qtyInCart = cartItem ? cartItem.quantity : 0;
+    const qtyInOriginal = originalItem ? originalItem.quantity : 0;
+    
+    return initialStock - (qtyInCart - qtyInOriginal);
+  };
+
   const handleAddItem = (item: MenuItem) => {
+    if (getAvailableStock(item) <= 0) return;
+
     const existing = cart.find(o => o.item_id === item.id);
     if (existing) {
       setCart(cart.map(o => o.item_id === item.id ? { ...o, quantity: o.quantity + 1 } : o));
@@ -40,6 +63,12 @@ export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
   const updateQuantity = (itemId: string, delta: number) => {
     const existing = cart.find(o => o.item_id === itemId);
     if (!existing) return;
+    
+    const itemDef = items.find(i => i.id === itemId);
+    if (delta > 0 && itemDef && getAvailableStock(itemDef) <= 0) {
+      return; // Cannot add more than stock
+    }
+
     const newQty = existing.quantity + delta;
     if (newQty <= 0) {
       setCart(cart.filter(o => o.item_id !== itemId));
@@ -52,6 +81,21 @@ export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
     if (!session) return;
     setLoading(true);
     try {
+      // Calculate deltas and update stock
+      for (const item of items) {
+        const originalItem = originalCart.find(o => o.item_id === item.id);
+        const cartItem = cart.find(o => o.item_id === item.id);
+        
+        const oldQty = originalItem ? originalItem.quantity : 0;
+        const newQty = cartItem ? cartItem.quantity : 0;
+        const delta = newQty - oldQty;
+        
+        if (delta !== 0 && item.stock_quantity !== undefined) {
+          const newStock = item.stock_quantity - delta;
+          await db.menu.update(item.id, { stock_quantity: Math.max(0, newStock) });
+        }
+      }
+
       await db.sessions.update(session.id, { orders: cart });
       onAdd();
       onClose();
@@ -79,17 +123,24 @@ export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
           <div className="flex-1 overflow-y-auto p-6 border-r border-border min-h-[300px]">
             <h3 className="text-sm font-medium text-muted-foreground mb-4">Menu Items</h3>
             <div className="grid grid-cols-2 gap-3">
-              {items.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => handleAddItem(item)}
-                  disabled={loading}
-                  className="flex flex-col items-center justify-center p-3 rounded-xl border border-border bg-black/20 hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all text-center disabled:opacity-50"
-                >
-                  <span className="font-medium text-sm text-foreground line-clamp-1">{item.name}</span>
-                  <span className="text-indigo-400 font-medium text-xs mt-1">₹ {item.price}</span>
-                </button>
-              ))}
+              {items.map(item => {
+                const available = getAvailableStock(item);
+                const isOutOfStock = available <= 0;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleAddItem(item)}
+                    disabled={loading || isOutOfStock}
+                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-border bg-black/20 hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all text-center disabled:opacity-50"
+                  >
+                    <span className="font-medium text-sm text-foreground line-clamp-1">{item.name}</span>
+                    <span className="text-indigo-400 font-medium text-xs mt-1">₹ {item.price}</span>
+                    <span className={`text-xs mt-1 font-semibold ${isOutOfStock ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      {isOutOfStock ? 'Out of Stock' : `Stock: ${available}`}
+                    </span>
+                  </button>
+                );
+              })}
               {items.length === 0 && (
                 <div className="col-span-full text-center py-8 text-muted-foreground text-sm">
                   No active menu items available.

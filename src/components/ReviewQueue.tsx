@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { db } from '../services/db';
 import type { AppSettings } from '../types';
 import { AlertCircle } from 'lucide-react';
-import { generateInvoicePDF } from '../lib/invoice';
 
 export function ReviewQueue() {
   const [errorCount, setErrorCount] = useState(0);
@@ -51,18 +50,14 @@ export function ReviewQueue() {
 
           const googleReviewLink = settings.google_review_url || "https://g.page/r/YOUR_UNIQUE_LINK/review";
           const cafeName = settings.cafe_name || "us";
-          const message = `Hi ${customer.name},\n\nThank you for choosing ${cafeName}! Attached is your invoice for today's session.\n\nWe are always striving to improve and would love to hear your feedback. If you have a moment, please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
-
-          const pdfBase64 = generateInvoicePDF(session, station, settings, customer.name, customer.phone);
+          const message = `Hi ${customer.name},\n\nHope you enjoyed your session at ${cafeName} today!\n\nIf you have a moment, we would love to hear your feedback. Please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
 
           const response = await fetch('http://localhost:3001/send-invoice', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               phone: customer.phone,
-              message,
-              pdfBase64,
-              pdfName: `Invoice_${session.id}.pdf`
+              message
             })
           });
 

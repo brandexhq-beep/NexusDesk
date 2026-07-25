@@ -59,6 +59,7 @@ export interface Session {
   payment_mode: PaymentMode | null;
   status: SessionStatus;
   extended_minutes?: number;
+  warning_sent?: boolean;
 }
 
 export type MenuCategory = 'snack' | 'drink' | 'combo' | 'package';
@@ -70,6 +71,7 @@ export interface MenuItem {
   category: MenuCategory;
   active: boolean;
   package_minutes?: number; // Only used for 'package' category
+  stock_quantity?: number; // Inventory tracking for snack/drink
 }
 
 export type TransactionType = 'session_payment' | 'food_order' | 'wallet_topup' | 'wallet_deduction' | 'session_charge' | 'food_charge' | 'points_redeemed' | 'points_earned' | 'tab_settled';
@@ -93,6 +95,7 @@ export interface AppSettings {
   session_start_delay_sec?: number;
   admin_password?: string;
   google_review_url?: string;
+  review_delay_mins?: number; // Configurable delay for automated WhatsApp review requests
 }
 
 export interface PricingRule {

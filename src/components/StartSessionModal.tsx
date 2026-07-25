@@ -45,15 +45,21 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
     try {
       const selectedCombo = combos.find(c => c.id === selectedComboId);
       
+      const prepaidDuration = isPrepaid ? (parseInt(prepaidHours) || 0) * 60 + (parseInt(prepaidMinutes) || 0) : null;
+      let baseAmount = selectedCombo ? selectedCombo.price : 0;
+      if (!selectedCombo && prepaidDuration) {
+        baseAmount = (prepaidDuration / 60) * station.hourly_rate;
+      }
+      
       await db.sessions.add({
         station_id: station.id,
         customer_id: selectedCustomerId === 'walk-in' ? null : selectedCustomerId,
         start_time: Date.now(),
         end_time: null,
-        prepaid_duration_mins: isPrepaid ? (parseInt(prepaidHours) || 0) * 60 + (parseInt(prepaidMinutes) || 0) : null,
+        prepaid_duration_mins: prepaidDuration,
         combo_id: selectedCombo ? selectedCombo.id : null,
         orders: [],
-        base_amount: selectedCombo ? selectedCombo.price : 0,
+        base_amount: baseAmount,
         overtime_amount: 0,
         food_amount: 0,
         total_amount: 0,

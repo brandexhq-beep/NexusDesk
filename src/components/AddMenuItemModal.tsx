@@ -17,6 +17,7 @@ export function AddMenuItemModal({ open, onClose, onAdd }: AddMenuItemModalProps
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [category, setCategory] = useState<MenuCategory>('snack');
+  const [stock, setStock] = useState('0');
   const [loading, setLoading] = useState(false);
 
   const handleSave = async () => {
@@ -24,18 +25,25 @@ export function AddMenuItemModal({ open, onClose, onAdd }: AddMenuItemModalProps
     
     setLoading(true);
     try {
-      await db.menu.add({
+      const payload: any = {
         name: name.trim(),
         price: Number(price),
         category,
         active: true
-      });
+      };
+      
+      if (category === 'snack' || category === 'drink') {
+        payload.stock_quantity = Number(stock) || 0;
+      }
+
+      await db.menu.add(payload);
       onAdd();
       onClose();
       // Reset form
       setName('');
       setPrice('');
       setCategory('snack');
+      setStock('0');
     } catch (e) {
       console.error(e);
     } finally {
@@ -87,6 +95,21 @@ export function AddMenuItemModal({ open, onClose, onAdd }: AddMenuItemModalProps
               </SelectContent>
             </Select>
           </div>
+
+          {(category === 'snack' || category === 'drink') && (
+            <div className="space-y-2">
+              <Label htmlFor="stock">Initial Stock</Label>
+              <Input 
+                id="stock" 
+                type="number" 
+                min="0"
+                placeholder="0" 
+                value={stock} 
+                onChange={e => setStock(e.target.value)} 
+                className="border-border bg-background"
+              />
+            </div>
+          )}
         </div>
 
         <DialogFooter>

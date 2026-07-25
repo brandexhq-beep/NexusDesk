@@ -24,3 +24,9 @@ build-dist
 *.njsproj
 *.sln
 *.sw?
+
+# WhatsApp temp data
+.wwebjs_auth
+.wwebjs_cache
+whatsapp-queue.json
+

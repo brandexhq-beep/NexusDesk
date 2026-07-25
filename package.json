@@ -22,7 +22,9 @@
       "output": "build-dist"
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "publish": {
       "provider": "github",
@@ -53,6 +55,7 @@
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.24.0",
     "qrcode-terminal": "^0.12.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",

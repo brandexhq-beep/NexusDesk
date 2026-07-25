@@ -5,8 +5,9 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '../services/db';
-import type { Station, Session, Customer, PricingRule } from '../types';
+import type { Station, Session, Customer, PricingRule, AppSettings } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
+import { generateInvoicePDF } from '../lib/invoice';
 
 interface StopSessionModalProps {
   station: Station | null;
@@ -24,9 +25,14 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   const [bill, setBill] = useState({ gameTime: 0, food: 0, subtotal: 0, discount: 0, total: 0 });
   const [conversionRate, setConversionRate] = useState<number>(10);
   const [minutesUsed, setMinutesUsed] = useState<number>(0);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [sendInvoice, setSendInvoice] = useState(false);
 
   useEffect(() => {
-    db.settings.get().then(s => setConversionRate(s.loyalty_conversion_rate));
+    db.settings.get().then(s => {
+      setConversionRate(s.loyalty_conversion_rate);
+      setSettings(s);
+    });
   }, []);
 
   useEffect(() => {
@@ -42,9 +48,11 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         if (found) {
           currentCust = found;
           setCustomer(found);
+          setSendInvoice(!!found.phone);
         }
       } else {
         setCustomer(null);
+        setSendInvoice(false);
       }
 
       // Calculate final bill with resolved customer data
@@ -55,10 +63,18 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
       if (session.combo_id) {
         gameTimeCost = session.base_amount || 0;
       } else {
-        const freeMinutes = currentCust ? currentCust.available_minutes : 0;
-        const res = calculateDynamicCost(Number(session.start_time), now, station, rules, freeMinutes);
-        gameTimeCost = res.cost;
-        usedMins = res.minutesUsed;
+        const customerFreeMinutes = currentCust ? currentCust.available_minutes : 0;
+        const prepaidMinutes = session.prepaid_duration_mins || 0;
+        const totalFreeMinutes = customerFreeMinutes + prepaidMinutes;
+        
+        const res = calculateDynamicCost(Number(session.start_time), now, station, rules, totalFreeMinutes);
+        gameTimeCost = (session.base_amount || 0) + res.cost;
+        usedMins = Math.max(0, res.minutesUsed - prepaidMinutes);
+      }
+
+      const extMins = session.extended_minutes || 0;
+      if (extMins > 0) {
+        gameTimeCost += (extMins / 60) * station.hourly_rate;
       }
 
       setMinutesUsed(usedMins);
@@ -109,7 +125,6 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
           if (customer.wallet_balance >= bill.total) {
             newWalletBalance = customer.wallet_balance - bill.total;
           } else {
-            // Partial payment: wallet balance used up, deficit added to amount_owed (Tab)
             const deficit = bill.total - customer.wallet_balance;
             newWalletBalance = 0;
             newAmountOwed = customer.amount_owed + deficit;
@@ -136,7 +151,6 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
           });
         }
 
-        // Add points and deduct redeemed
         const newLoyaltyPoints = customer.loyalty_points + Math.floor(bill.total / 10) - pointsToRedeem;
         await db.customers.update(customer.id, { 
           wallet_balance: Math.max(0, newWalletBalance),
@@ -145,12 +159,45 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
           available_minutes: Math.max(0, customer.available_minutes - minutesUsed) 
         });
 
+        if (customer.phone && sendInvoice && settings) {
+          try {
+            const completedSession = { ...session, status: 'completed' as const, end_time: Date.now(), total_amount: bill.total, payment_mode: paymentMode as any };
+            
+            const invoiceData = {
+              customerName: customer.name,
+              customerPhone: customer.phone,
+              pointsEarned: Math.floor(bill.total / 10),
+              pointsRedeemed: pointsToRedeem,
+              discountAmount: bill.discount
+            };
+            
+            const pdfBase64 = generateInvoicePDF(completedSession, station, settings, invoiceData);
+            
+            const googleReviewLink = settings.google_review_url || "https://g.page/r/YOUR_UNIQUE_LINK/review";
+            const cafeName = settings.cafe_name || "us";
+            const message = `Hi ${customer.name},\n\nThank you for choosing ${cafeName}! Attached is your invoice for today's session.\n\nIf you have a moment, please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
+
+            fetch('http://localhost:3001/send-invoice', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone: customer.phone,
+                message,
+                pdfBase64,
+                pdfName: `Invoice_${customer.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`
+              })
+            }).catch(console.error); // Fire and forget so we don't block closing
+          } catch (pdfErr) {
+            console.error('Failed to generate/send immediate invoice:', pdfErr);
+          }
+        }
+
         // Queue a review request for 30 minutes from now if the customer has a phone number
         if (customer.phone) {
           await db.reviewRequests.add({
             customer_id: customer.id,
             session_id: session.id,
-            scheduled_for: Date.now() + 30 * 60 * 1000 // 30 minutes
+            scheduled_for: Date.now() + (settings ? (settings.review_delay_mins || 30) : 30) * 60 * 1000,
           });
         }
       }
@@ -236,6 +283,19 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
               </SelectContent>
             </Select>
           </div>
+
+          {customer && customer.phone && (
+            <div className="flex items-center space-x-2 pt-2">
+              <input 
+                type="checkbox" 
+                id="sendInvoice"
+                checked={sendInvoice} 
+                onChange={(e) => setSendInvoice(e.target.checked)}
+                className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+              />
+              <Label htmlFor="sendInvoice" className="cursor-pointer">Send Invoice via WhatsApp now</Label>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

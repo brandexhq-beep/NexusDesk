@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { db } from '../services/db';
 import type { AppSettings, PricingRule } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Plus, Download, Upload } from 'lucide-react';
+import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle } from 'lucide-react';
 import { PricingRuleModal } from '../components/PricingRuleModal';
+import { QRCodeCanvas } from 'qrcode.react';
 
 export function Settings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -19,7 +20,8 @@ export function Settings() {
     loyalty_conversion_rate: '',
     session_start_delay_sec: '',
     admin_password: '',
-    google_review_url: ''
+    google_review_url: '',
+    review_delay_mins: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -27,8 +29,15 @@ export function Settings() {
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
 
+  // WhatsApp status state
+  const [waStatus, setWaStatus] = useState<{ready: boolean, qr: string | null}>({ ready: false, qr: null });
+  const waIntervalRef = useRef<number | null>(null);
+
   useEffect(() => {
     loadSettings();
+    return () => {
+      if (waIntervalRef.current) clearInterval(waIntervalRef.current);
+    };
   }, []);
 
   const loadSettings = async () => {
@@ -44,8 +53,30 @@ export function Settings() {
       loyalty_conversion_rate: data.loyalty_conversion_rate.toString(),
       session_start_delay_sec: data.session_start_delay_sec?.toString() || '0',
       admin_password: data.admin_password || 'admin',
-      google_review_url: data.google_review_url || ''
+      google_review_url: data.google_review_url || '',
+      review_delay_mins: data.review_delay_mins?.toString() || '30'
     });
+  };
+
+  const startWhatsAppPolling = () => {
+    const fetchWaStatus = async () => {
+      try {
+        const res = await fetch('http://localhost:3001/whatsapp-status');
+        const json = await res.json();
+        setWaStatus(json);
+      } catch (e) {
+        setWaStatus({ ready: false, qr: null });
+      }
+    };
+    fetchWaStatus();
+    waIntervalRef.current = window.setInterval(fetchWaStatus, 3000);
+  };
+
+  const stopWhatsAppPolling = () => {
+    if (waIntervalRef.current) {
+      clearInterval(waIntervalRef.current);
+      waIntervalRef.current = null;
+    }
   };
 
   const handleSave = async () => {
@@ -59,7 +90,8 @@ export function Settings() {
         loyalty_conversion_rate: Number(formData.loyalty_conversion_rate),
         session_start_delay_sec: Number(formData.session_start_delay_sec),
         admin_password: formData.admin_password,
-        google_review_url: formData.google_review_url
+        google_review_url: formData.google_review_url,
+        review_delay_mins: Number(formData.review_delay_mins)
       });
       await loadSettings();
     } catch (e) {
@@ -115,11 +147,12 @@ export function Settings() {
         </Button>
       </div>
 
-      <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-md bg-black/40 border border-white/5 mb-6">
+      <Tabs defaultValue="general" className="w-full" onValueChange={(val) => val === 'whatsapp' ? startWhatsAppPolling() : stopWhatsAppPolling()}>
+        <TabsList className="grid w-full grid-cols-4 max-w-2xl bg-black/40 border border-white/5 mb-6">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="pricing">Dynamic Pricing</TabsTrigger>
           <TabsTrigger value="loyalty">Loyalty System</TabsTrigger>
+          <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
         </TabsList>
         
         {/* GENERAL TAB */}
@@ -166,16 +199,6 @@ export function Settings() {
                     className="border-white/10 bg-background/50"
                   />
                   <p className="text-[10px] text-muted-foreground">Countdown delay before a session starts tracking time.</p>
-                </div>
-                <div className="space-y-2 col-span-1 md:col-span-2">
-                  <Label>Google Review URL</Label>
-                  <Input 
-                    value={formData.google_review_url} 
-                    onChange={(e) => setFormData({...formData, google_review_url: e.target.value})}
-                    placeholder="https://g.page/r/YOUR_UNIQUE_LINK/review"
-                    className="border-white/10 bg-background/50"
-                  />
-                  <p className="text-[10px] text-muted-foreground">Link sent via WhatsApp asking customers for Google reviews.</p>
                 </div>
               </div>
             </CardContent>
@@ -312,6 +335,73 @@ export function Settings() {
                     className="border-white/10 bg-background/50 w-32"
                   />
                   <span className="text-muted-foreground">points equals {formData.currency_symbol} 1 discount.</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* WHATSAPP TAB */}
+        <TabsContent value="whatsapp" className="space-y-6">
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-indigo-400" /> WhatsApp Server Connection
+              </CardTitle>
+              <CardDescription>Scan the QR code to link your admin WhatsApp account for automated messages.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 flex flex-col items-center justify-center p-8">
+              {waStatus.ready ? (
+                <div className="flex flex-col items-center text-emerald-400 gap-3">
+                  <CheckCircle2 className="w-16 h-16" />
+                  <span className="text-lg font-bold">WhatsApp is Connected!</span>
+                  <p className="text-sm text-emerald-400/70 text-center max-w-sm">
+                    Invoices and 5-minute session reminders will be sent automatically from your linked account.
+                  </p>
+                </div>
+              ) : waStatus.qr ? (
+                <div className="flex flex-col items-center gap-4">
+                  <div className="bg-white p-4 rounded-xl">
+                    <QRCodeCanvas value={waStatus.qr} size={256} />
+                  </div>
+                  <span className="text-muted-foreground font-medium animate-pulse">Waiting for scan...</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center text-muted-foreground gap-3 py-8">
+                  <div className="w-12 h-12 border-4 border-muted-foreground border-t-transparent rounded-full animate-spin"></div>
+                  <span>Connecting to WhatsApp Server... Make sure `npm run whatsapp` is running.</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Review Requests Configuration</CardTitle>
+              <CardDescription>Configure when and how Google review requests are sent to customers.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 col-span-1 md:col-span-2">
+                  <Label>Google Review URL</Label>
+                  <Input 
+                    value={formData.google_review_url} 
+                    onChange={(e) => setFormData({...formData, google_review_url: e.target.value})}
+                    placeholder="https://g.page/r/YOUR_UNIQUE_LINK/review"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">The link attached to the automated review request message.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Review Request Delay (Minutes)</Label>
+                  <Input 
+                    type="number" min="0"
+                    value={formData.review_delay_mins} 
+                    onChange={(e) => setFormData({...formData, review_delay_mins: e.target.value})}
+                    placeholder="e.g. 30"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">How many minutes after a session ends should the review link be sent?</p>
                 </div>
               </div>
             </CardContent>

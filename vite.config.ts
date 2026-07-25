@@ -5,11 +5,15 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
-  plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  server: {
+    watch: {
+      ignored: ['**/.wwebjs_auth/**', '**/.wwebjs_cache/**', '**/whatsapp-queue.json']
+    }
   },
   build: {
     chunkSizeWarningLimit: 1000,
@@ -22,5 +26,14 @@ export default defineConfig({
         }
       }
     }
-  }
+  },
+  plugins: [
+    react(),
+    {
+      name: 'remove-crossorigin',
+      transformIndexHtml(html) {
+        return html.replace(/crossorigin/g, '');
+      }
+    }
+  ]
 })

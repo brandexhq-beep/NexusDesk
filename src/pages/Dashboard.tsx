@@ -126,8 +126,8 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
       if (activeSession.combo_id) {
         tempCost = activeSession.base_amount || 0; 
       } else {
-        const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, 0);
-        tempCost = res.cost;
+        const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, activeSession.prepaid_duration_mins || 0);
+        tempCost = (activeSession.base_amount || 0) + res.cost;
       }
       
       const extMins = activeSession.extended_minutes || 0;

@@ -16,8 +16,8 @@ let customers: Customer[] = [
 let sessions: Session[] = [];
 let transactions: Transaction[] = [];
 let menuItems: MenuItem[] = [
-  { id: '1', name: 'Coke', price: 50, category: 'drink', active: true },
-  { id: '2', name: 'Chips', price: 30, category: 'snack', active: true },
+  { id: '1', name: 'Coke', price: 50, category: 'drink', active: true, stock_quantity: 20 },
+  { id: '2', name: 'Chips', price: 30, category: 'snack', active: true, stock_quantity: 15 },
   { id: '3', name: '2hr PS5 + Coke', price: 180, category: 'combo', active: true },
   { id: 'pkg-5', name: '5 Hour Package', price: 400, category: 'package', active: true, package_minutes: 300 },
   { id: 'pkg-10', name: '10 Hour Package', price: 750, category: 'package', active: true, package_minutes: 600 },
@@ -34,7 +34,8 @@ let settings: AppSettings = {
   tax_rate_percent: 18,
   loyalty_conversion_rate: 10,
   admin_password: 'admin',
-  google_review_url: 'https://g.page/r/YOUR_UNIQUE_LINK/review'
+  google_review_url: 'https://g.page/r/YOUR_UNIQUE_LINK/review',
+  review_delay_mins: 30
 };
 
 let reviewRequests: import('../types').ReviewRequest[] = [];
