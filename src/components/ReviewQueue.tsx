@@ -49,7 +49,7 @@ export function ReviewQueue() {
              continue;
           }
 
-          const googleReviewLink = "https://g.page/r/YOUR_UNIQUE_LINK/review";
+          const googleReviewLink = settings.google_review_url || "https://g.page/r/YOUR_UNIQUE_LINK/review";
           const cafeName = settings.cafe_name || "us";
           const message = `Hi ${customer.name},\n\nThank you for choosing ${cafeName}! Attached is your invoice for today's session.\n\nWe are always striving to improve and would love to hear your feedback. If you have a moment, please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
 

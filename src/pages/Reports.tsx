@@ -53,11 +53,12 @@ export function Reports() {
       const weekDay = weekData.find(w => w.date === sDate);
       if (weekDay) {
          const foodCost = s.orders ? s.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0) : 0;
-         weekDay.gaming += s.total_amount - foodCost;
+         weekDay.gaming += Math.max(0, s.total_amount - foodCost);
          weekDay.food += foodCost;
       }
     });
     
+    // Process standalone food transactions (not attached to completed sessions)
     transactions.forEach(t => {
       if (t.type === 'food_charge' || t.type === 'food_order') {
         const time = Number(t.timestamp);

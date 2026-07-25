@@ -30,35 +30,40 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   }, []);
 
   useEffect(() => {
-    if (session && station) {
+    if (!session || !station) {
+      setCustomer(null);
+      return;
+    }
+
+    const init = async () => {
+      let currentCust: Customer | null = null;
       if (session.customer_id) {
-        db.customers.getById(session.customer_id).then(c => c && setCustomer(c));
+        const found = await db.customers.getById(session.customer_id);
+        if (found) {
+          currentCust = found;
+          setCustomer(found);
+        }
       } else {
         setCustomer(null);
       }
-      
-      // Calculate final bill
+
+      // Calculate final bill with resolved customer data
       const now = Date.now();
-      
       let gameTimeCost = 0;
       let usedMins = 0;
-      
+
       if (session.combo_id) {
-        // Since we are adding "Package" support, what if they bought a combo during start session?
-        // Combos charge fixed base_amount. We don't deduct available_minutes if they bought a specific combo, maybe?
-        // Actually, the prompt only asks for "Bulk packages (5/10/15 hours)". Those are bought as packages to fill the wallet, not applied at session start.
         gameTimeCost = session.base_amount || 0;
       } else {
-        const freeMinutes = customer ? customer.available_minutes : 0;
+        const freeMinutes = currentCust ? currentCust.available_minutes : 0;
         const res = calculateDynamicCost(Number(session.start_time), now, station, rules, freeMinutes);
         gameTimeCost = res.cost;
         usedMins = res.minutesUsed;
       }
-      
-      setMinutesUsed(usedMins);
 
+      setMinutesUsed(usedMins);
       const foodCost = session.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0);
-      
+
       setBill(prev => ({
         ...prev,
         gameTime: gameTimeCost,
@@ -66,8 +71,10 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         subtotal: gameTimeCost + foodCost,
         total: gameTimeCost + foodCost - prev.discount
       }));
-    }
-  }, [session, station]);
+    };
+
+    init();
+  }, [session, station, rules]);
 
   useEffect(() => {
     const discount = pointsToRedeem / conversionRate;
@@ -76,7 +83,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
       discount,
       total: Math.max(0, prev.subtotal - discount)
     }));
-  }, [pointsToRedeem]);
+  }, [pointsToRedeem, conversionRate]);
 
   const handleCheckout = async () => {
     if (!session || !station) return;
@@ -99,7 +106,14 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         let newAmountOwed = customer.amount_owed;
 
         if (paymentMode === 'wallet') {
-          newWalletBalance = customer.wallet_balance - bill.total;
+          if (customer.wallet_balance >= bill.total) {
+            newWalletBalance = customer.wallet_balance - bill.total;
+          } else {
+            // Partial payment: wallet balance used up, deficit added to amount_owed (Tab)
+            const deficit = bill.total - customer.wallet_balance;
+            newWalletBalance = 0;
+            newAmountOwed = customer.amount_owed + deficit;
+          }
         } else if (paymentMode === 'tab') {
           newAmountOwed = customer.amount_owed + bill.total;
         }

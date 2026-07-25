@@ -44,10 +44,14 @@ export function GlobalAlerts() {
     return () => clearInterval(interval);
   }, [alerts.length]);
 
-  const playSound = () => {
+  const playSound = async () => {
     try {
-      // Standard beep using AudioContext
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        await ctx.resume().catch(() => {});
+      }
       const osc = ctx.createOscillator();
       const gainNode = ctx.createGain();
       
@@ -61,7 +65,7 @@ export function GlobalAlerts() {
       osc.start();
       osc.stop(ctx.currentTime + 0.5);
     } catch (e) {
-      console.error("Audio play failed:", e);
+      console.warn("Audio play blocked by browser policy:", e);
     }
   };
 

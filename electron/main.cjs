@@ -8,8 +8,23 @@ let mainWindow;
 let whatsappServerProcess;
 
 function startWhatsAppServer() {
-  const serverPath = path.join(__dirname, '..', 'whatsapp-server.cjs');
-  whatsappServerProcess = fork(serverPath, [], { stdio: 'inherit' });
+  const packagedPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'whatsapp-server.cjs');
+  const asarPath = path.join(__dirname, '..', 'whatsapp-server.cjs');
+  const rootPath = path.join(process.resourcesPath, 'whatsapp-server.cjs');
+  
+  const fs = require('fs');
+  let finalPath = asarPath;
+  if (fs.existsSync(rootPath)) {
+    finalPath = rootPath;
+  } else if (fs.existsSync(packagedPath)) {
+    finalPath = packagedPath;
+  }
+
+  try {
+    whatsappServerProcess = fork(finalPath, [], { stdio: 'inherit' });
+  } catch (err) {
+    console.error('Failed to fork WhatsApp server process:', err);
+  }
 }
 
 function createWindow() {
@@ -25,10 +40,10 @@ function createWindow() {
     title: 'Gaming Cafe Management',
   });
 
-  // Open the window maximized by default
   mainWindow.maximize();
 
-  // Load the app
+  const isDev = !app.isPackaged && process.env.NODE_ENV === 'development';
+
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
@@ -36,8 +51,9 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
-  // Handle auto-updates
-  autoUpdater.checkForUpdatesAndNotify();
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;

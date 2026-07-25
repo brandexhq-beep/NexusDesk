@@ -55,7 +55,11 @@ app.post('/send-invoice', async (req, res) => {
 
         // Format phone number to WhatsApp ID
         const formattedPhone = phone.replace(/\D/g, ''); // strip all non-numeric chars
-        const chatId = `${formattedPhone}@c.us`;
+        let fullPhone = formattedPhone;
+        if (fullPhone.length === 10) {
+            fullPhone = `91${fullPhone}`; // Default to India (+91) if 10 digits
+        }
+        const chatId = `${fullPhone}@c.us`;
 
         // Create media from base64 if provided
         let media = null;

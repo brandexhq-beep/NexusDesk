@@ -18,7 +18,8 @@ export function Settings() {
     tax_rate_percent: '',
     loyalty_conversion_rate: '',
     session_start_delay_sec: '',
-    admin_password: ''
+    admin_password: '',
+    google_review_url: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +43,8 @@ export function Settings() {
       tax_rate_percent: data.tax_rate_percent?.toString() || '0',
       loyalty_conversion_rate: data.loyalty_conversion_rate.toString(),
       session_start_delay_sec: data.session_start_delay_sec?.toString() || '0',
-      admin_password: data.admin_password || 'admin'
+      admin_password: data.admin_password || 'admin',
+      google_review_url: data.google_review_url || ''
     });
   };
 
@@ -56,7 +58,8 @@ export function Settings() {
         tax_rate_percent: Number(formData.tax_rate_percent),
         loyalty_conversion_rate: Number(formData.loyalty_conversion_rate),
         session_start_delay_sec: Number(formData.session_start_delay_sec),
-        admin_password: formData.admin_password
+        admin_password: formData.admin_password,
+        google_review_url: formData.google_review_url
       });
       await loadSettings();
     } catch (e) {
@@ -163,6 +166,16 @@ export function Settings() {
                     className="border-white/10 bg-background/50"
                   />
                   <p className="text-[10px] text-muted-foreground">Countdown delay before a session starts tracking time.</p>
+                </div>
+                <div className="space-y-2 col-span-1 md:col-span-2">
+                  <Label>Google Review URL</Label>
+                  <Input 
+                    value={formData.google_review_url} 
+                    onChange={(e) => setFormData({...formData, google_review_url: e.target.value})}
+                    placeholder="https://g.page/r/YOUR_UNIQUE_LINK/review"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Link sent via WhatsApp asking customers for Google reviews.</p>
                 </div>
               </div>
             </CardContent>

@@ -92,6 +92,7 @@ export interface AppSettings {
   loyalty_conversion_rate: number; // e.g. 10 means 10 points = 1 currency unit
   session_start_delay_sec?: number;
   admin_password?: string;
+  google_review_url?: string;
 }
 
 export interface PricingRule {

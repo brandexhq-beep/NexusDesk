@@ -1,7 +1,9 @@
 {
   "name": "gaming-cafe-management",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Gaming Cafe Management System",
+  "author": "Brandex",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -17,7 +19,7 @@
     "appId": "com.brandex.gamingcafemanagement",
     "productName": "Gaming Cafe Management",
     "directories": {
-      "output": "release"
+      "output": "build-dist"
     },
     "win": {
       "target": ["nsis"]

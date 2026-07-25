@@ -33,7 +33,8 @@ let settings: AppSettings = {
   currency_symbol: '₹',
   tax_rate_percent: 18,
   loyalty_conversion_rate: 10,
-  admin_password: 'admin'
+  admin_password: 'admin',
+  google_review_url: 'https://g.page/r/YOUR_UNIQUE_LINK/review'
 };
 
 let reviewRequests: import('../types').ReviewRequest[] = [];
@@ -76,22 +77,26 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export const db = {
   stations: {
     getAll: async (): Promise<Station[]> => {
+      hydrate();
       await delay(200);
       return [...stations];
     },
     update: async (id: string, data: Partial<Station>): Promise<void> => {
+      hydrate();
       await delay(200);
       stations = stations.map(s => s.id === id ? { ...s, ...data } : s);
       saveToStorage();
     },
     add: async (station: Omit<Station, 'id'>): Promise<Station> => {
+      hydrate();
       await delay(200);
-      const newStation = { ...station, id: Math.random().toString(36).substring(7) };
+      const newStation = { ...station, id: crypto.randomUUID() };
       stations.push(newStation);
       saveToStorage();
       return newStation;
     },
     delete: async (id: string): Promise<void> => {
+      hydrate();
       await delay(200);
       stations = stations.filter(s => s.id !== id);
       saveToStorage();
@@ -99,18 +104,21 @@ export const db = {
   },
   customers: {
     getAll: async (): Promise<Customer[]> => {
+      hydrate();
       await delay(200);
       return [...customers];
     },
     getById: async (id: string): Promise<Customer | undefined> => {
+      hydrate();
       await delay(200);
       return customers.find(c => c.id === id);
     },
     add: async (customer: Omit<Customer, 'id' | 'created_at'>): Promise<Customer> => {
+      hydrate();
       await delay(200);
       const newCustomer: Customer = {
         ...customer,
-        id: Math.random().toString(36).substring(7),
+        id: crypto.randomUUID(),
         created_at: Date.now()
       };
       customers.push(newCustomer);
@@ -118,6 +126,7 @@ export const db = {
       return newCustomer;
     },
     update: async (id: string, data: Partial<Customer>): Promise<void> => {
+      hydrate();
       await delay(200);
       customers = customers.map(c => c.id === id ? { ...c, ...data } : c);
       saveToStorage();
@@ -125,21 +134,25 @@ export const db = {
   },
   sessions: {
     getAll: async (): Promise<Session[]> => {
+      hydrate();
       await delay(200);
       return [...sessions];
     },
     getActiveByStation: async (stationId: string): Promise<Session | undefined> => {
+      hydrate();
       await delay(200);
       return sessions.find(s => s.station_id === stationId && s.status === 'active');
     },
     add: async (session: Omit<Session, 'id'>): Promise<Session> => {
+      hydrate();
       await delay(200);
-      const newSession = { ...session, id: Math.random().toString(36).substring(7) };
+      const newSession = { ...session, id: crypto.randomUUID() };
       sessions.push(newSession);
       saveToStorage();
       return newSession;
     },
     update: async (id: string, data: Partial<Session>): Promise<void> => {
+      hydrate();
       await delay(200);
       sessions = sessions.map(s => s.id === id ? { ...s, ...data } : s);
       saveToStorage();
@@ -147,22 +160,26 @@ export const db = {
   },
   menu: {
     getAll: async (): Promise<MenuItem[]> => {
+      hydrate();
       await delay(200);
       return [...menuItems];
     },
     add: async (item: Omit<MenuItem, 'id'>): Promise<MenuItem> => {
+      hydrate();
       await delay(200);
-      const newItem = { ...item, id: Math.random().toString(36).substring(7) };
+      const newItem = { ...item, id: crypto.randomUUID() };
       menuItems.push(newItem);
       saveToStorage();
       return newItem;
     },
     update: async (id: string, data: Partial<MenuItem>): Promise<void> => {
+      hydrate();
       await delay(200);
       menuItems = menuItems.map(m => m.id === id ? { ...m, ...data } : m);
       saveToStorage();
     },
     delete: async (id: string): Promise<void> => {
+      hydrate();
       await delay(200);
       menuItems = menuItems.filter(m => m.id !== id);
       saveToStorage();
@@ -170,14 +187,16 @@ export const db = {
   },
   transactions: {
     getAll: async (): Promise<Transaction[]> => {
+      hydrate();
       await delay(200);
       return [...transactions];
     },
     add: async (transaction: Omit<Transaction, 'id' | 'timestamp'>): Promise<Transaction> => {
+      hydrate();
       await delay(200);
       const newTransaction: Transaction = {
         ...transaction,
-        id: Math.random().toString(36).substring(7),
+        id: crypto.randomUUID(),
         timestamp: Date.now()
       };
       transactions.push(newTransaction);
@@ -187,10 +206,12 @@ export const db = {
   },
   settings: {
     get: async (): Promise<AppSettings> => {
+      hydrate();
       await delay(200);
       return { ...settings };
     },
     update: async (data: Partial<AppSettings>): Promise<void> => {
+      hydrate();
       await delay(200);
       settings = { ...settings, ...data };
       saveToStorage();
@@ -198,22 +219,26 @@ export const db = {
   },
   pricingRules: {
     getAll: async (): Promise<PricingRule[]> => {
+      hydrate();
       await delay(200);
       return [...pricingRules];
     },
     add: async (rule: Omit<PricingRule, 'id'>): Promise<PricingRule> => {
+      hydrate();
       await delay(200);
-      const newRule = { ...rule, id: Math.random().toString(36).substring(7) };
+      const newRule = { ...rule, id: crypto.randomUUID() };
       pricingRules.push(newRule);
       saveToStorage();
       return newRule;
     },
     update: async (id: string, data: Partial<PricingRule>): Promise<void> => {
+      hydrate();
       await delay(200);
       pricingRules = pricingRules.map(r => r.id === id ? { ...r, ...data } : r);
       saveToStorage();
     },
     delete: async (id: string): Promise<void> => {
+      hydrate();
       await delay(200);
       pricingRules = pricingRules.filter(r => r.id !== id);
       saveToStorage();
@@ -221,14 +246,16 @@ export const db = {
   },
   reviewRequests: {
     getAll: async (): Promise<import('../types').ReviewRequest[]> => {
+      hydrate();
       await delay(200);
       return [...reviewRequests];
     },
     add: async (request: Omit<import('../types').ReviewRequest, 'id' | 'created_at' | 'sent'>): Promise<void> => {
+      hydrate();
       await delay(200);
       const newRequest = {
         ...request,
-        id: Math.random().toString(36).substring(7),
+        id: crypto.randomUUID(),
         sent: false,
         created_at: Date.now()
       };
@@ -236,6 +263,7 @@ export const db = {
       saveToStorage();
     },
     markSent: async (id: string): Promise<void> => {
+      hydrate();
       await delay(200);
       reviewRequests = reviewRequests.map(r => r.id === id ? { ...r, sent: true } : r);
       saveToStorage();

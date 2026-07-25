@@ -1,40 +1,46 @@
 # NexusDesk: Premium Gaming Cafe Management System
 
-![Dashboard Preview](https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop) *(Placeholder Image)*
+![NexusDesk Banner](public/logo.png) *(Brandex Gaming Cafe Tool)*
 
-NexusDesk is a modern, white-label, Progressive Web Application (PWA) designed to seamlessly manage the day-to-day operations of Gaming Cafes, eSports Lounges, and Cyber Cafes. Built with a stunning glassmorphic UI, it provides operators with real-time station tracking, dynamic pricing, a robust loyalty system, and deep customer analytics.
+NexusDesk is a modern, white-label desktop and web application designed to manage the day-to-day operations of Gaming Cafes, eSports Lounges, and Cyber Cafes. Built with a glassmorphic dark-mode UI, it provides operators with live station tracking, dynamic pricing, a loyalty engine, food/drink orders, WhatsApp automated invoicing & review collection, and deep analytics.
+
+---
 
 ## ✨ Key Features
 
-- **Live Station Tracking**: Monitor PS5s, VR rigs, and PC setups in real-time. Instantly see which stations are free, occupied, or past their grace period.
-- **Dynamic Pricing Engine**: Configure complex "Happy Hour" pricing rules that automatically trigger based on the time of day and the specific day of the week.
-- **Prepaid & Postpaid Sessions**: Support both walk-in open tabs (pay at the end) and fixed-duration prepaid sessions.
-- **Customer CRM & Profiles**: Track lifetime spend, visit history, and contact details for registered customers.
-- **Loyalty Point System**: Automatically award configurable loyalty points for every top-up, which customers can redeem for sessions or snacks.
-- **Persistent Local Database**: Built-in persistence using `localStorage` ensures that a refresh or power outage won't wipe out your live sessions.
-- **White-Label Ready**: Easily swap the cafe name, currency symbol, and logo via the Settings page.
+- 🎮 **Live Station Dashboard**: Real-time tracking of PS5s, VR Rigs, Sim Racing setups, Snooker tables, and Gaming PCs.
+- ⚡ **Dynamic Pricing Engine**: Configure "Happy Hour" rules based on days of the week, times of day, and overnight shifts (`start_time > end_time`).
+- ⏱️ **Grace Period & Prepaid Support**: Custom free grace period before billing starts, plus support for fixed-duration prepaid sessions and open tabs.
+- 🍔 **Food & Snack Orders**: Add food and beverage items directly to active station tabs with real-time bill calculation.
+- 👥 **Customer CRM & Loyalty**: Track lifetime spend, package credits (`available_minutes`), loyalty points earned/redeemed, and tab debts (`amount_owed`).
+- 💬 **WhatsApp Automated Invoicing**: Automatically queue and send PDF invoices and Google Review requests via WhatsApp 30 minutes after session checkout.
+- 🛡️ **Desktop Executable (`.exe`)**: Built with Electron for full Windows desktop integration with auto-starting WhatsApp service.
+- 🎨 **White-Label Customization**: Customize Cafe Name, Logo URL/GIF, Currency Symbol, Tax Rates, Session Start Delay, and Google Review URL from Settings.
+
+---
 
 ## 🛠️ Technology Stack
 
-- **Framework**: React 18
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS + Shadcn/ui
-- **Icons**: Lucide React
-- **Build Tool**: Vite
-- **Storage**: Browser LocalStorage (Architected for drop-in Firebase/Firestore replacement)
+- **Frontend**: React 19, TypeScript, Tailwind CSS, Lucide Icons, Recharts, Shadcn UI
+- **Desktop Wrapper**: Electron 43, Electron Builder, Electron Updater
+- **Automation Service**: Node.js Express, WhatsApp Web.js (`puppeteer`), `jsPDF`, `jspdf-autotable`
+- **Build Tool**: Vite 8
 
-## 🚀 Getting Started
+---
+
+## 🚀 Commands & Development Guide
 
 ### Prerequisites
 
-Ensure you have [Node.js](https://nodejs.org/) installed on your machine.
+- [Node.js](https://nodejs.org/) v18 or later
+- [npm](https://www.npmjs.com/) v9 or later
 
 ### Installation
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/nexusdesk-cafe.git
-   cd nexusdesk-cafe
+   git clone https://github.com/brandex/nexusdesk.git
+   cd "Gaming Cafe Management"
    ```
 
 2. **Install dependencies:**
@@ -42,41 +48,74 @@ Ensure you have [Node.js](https://nodejs.org/) installed on your machine.
    npm install
    ```
 
-3. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
+---
 
-4. **Open the App:**
-   Navigate to `http://localhost:5173` in your browser.
+### Running the System Commands
 
-## 📦 Building for Production
-
-To create an optimized production build:
-
+#### 1. Start Web Application (Dev Mode)
+Runs the Vite development web app on `http://localhost:5173`.
 ```bash
-npm run build
+npm run dev
 ```
 
-This will generate a `dist` folder containing minified assets ready for deployment on Vercel, Netlify, or Firebase Hosting.
+#### 2. Start Standalone WhatsApp Invoicing Server
+Runs the local Express + WhatsApp Web server on `http://localhost:3001`. On first run, it generates a QR code in the terminal to pair your WhatsApp device.
+```bash
+npm run whatsapp
+```
 
-## 🎨 White-Labeling & Branding
+#### 3. Start Desktop Application (Electron Dev Mode)
+Launches the Web App inside Electron along with the background WhatsApp server concurrently.
+```bash
+npm run electron:dev
+```
 
-NexusDesk is designed to be resold or adapted for multiple venues. To rebrand:
-1. Open the application.
-2. Navigate to the **Settings** tab.
-3. Update the **Cafe Name** and paste a **Logo Image/GIF URL**.
-4. Set the local **Currency Symbol** and **Tax Rate**.
-5. Save changes. The entire UI will instantly update to reflect the new brand.
+#### 4. Type Check & Linting
+Verify TypeScript types and run static analysis:
+```bash
+# Type check
+npx tsc --noEmit
 
-## 🗄️ Database Architecture
-
-Currently, the application uses an asynchronous `db.ts` wrapper around `localStorage` to simulate network calls and persist data locally without needing a backend server. 
-
-When you are ready to scale to multiple synchronized tablets:
-1. Create a Firebase project.
-2. Update the methods in `src/services/db.ts` to use Firestore's `getDocs`, `addDoc`, and `updateDoc`. 
-3. The rest of the application UI will seamlessly accept the real database calls without requiring massive component rewrites.
+# Oxlint code check
+npm run lint
+```
 
 ---
-*Built with ❤️ for cafe operators worldwide.*
+
+## 📦 Bundling into Windows Executable (`.exe`)
+
+To package the application into a standalone Windows installer (`.exe`):
+
+```bash
+npm run electron:build
+```
+
+### Build Artifacts Output
+After the build process completes, the output installer will be saved in the `release/` directory:
+- **Installer**: `release/Gaming Cafe Management Setup 0.0.0.exe`
+- **Unpacked App**: `release/win-unpacked/`
+
+When launched from the installer, the desktop executable automatically spawns the background WhatsApp service (`whatsapp-server.cjs`).
+
+---
+
+## 📱 WhatsApp Integration Setup
+
+1. Launch either the Electron app or run `npm run whatsapp` in a terminal window.
+2. Open WhatsApp on your mobile phone -> **Linked Devices** -> **Link a Device**.
+3. Scan the QR code rendered in the terminal window.
+4. Once authenticated, checkout receipts and Google Review links will automatically be sent to customer phone numbers via WhatsApp.
+
+---
+
+## ⚙️ White-Label & Settings Configuration
+
+1. Open the application and navigate to **Settings**.
+2. **General**: Update Cafe Name, Logo URL/GIF, Currency Symbol, Session Start Delay, and **Google Review URL**.
+3. **Dynamic Pricing**: Create or toggle Happy Hour rules with custom hourly rates and active day filters.
+4. **Loyalty System**: Configure the points-to-currency discount conversion rate.
+5. **Data Management**: Backup or restore your local database as a `.json` file at any time.
+
+---
+
+*Built with ❤️ by [Brandex](https://www.brandex.co.in).*
