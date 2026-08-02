@@ -25,7 +25,6 @@ export function AddCustomerModal({ open, onClose, onAdd }: AddCustomerModalProps
         phone: `+91 ${phone}`,
         wallet_balance: 0,
         available_minutes: 0,
-        amount_owed: 0,
         loyalty_points: 0,
       });
       setName('');

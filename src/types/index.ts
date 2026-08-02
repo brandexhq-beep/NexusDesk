@@ -26,6 +26,8 @@ export interface Station {
   status: StationStatus;
   overtime_block_minutes: number;
   grace_period_minutes: number;
+  installed_games?: string[];
+  player_rates?: Record<number, number>;
 }
 
 export interface Customer {
@@ -34,12 +36,14 @@ export interface Customer {
   phone: string;
   wallet_balance: number;
   available_minutes: number;
-  amount_owed: number;
+  amount_owed?: number;
   loyalty_points: number;
+  loyalty_points_updated_at?: number;
+  loyalty_reminder_sent?: boolean;
   created_at: number | Date; // Depending on Firestore timestamp vs JS Date
 }
 
-export type PaymentMode = 'wallet' | 'tab' | 'cash' | 'mixed';
+export type PaymentMode = 'wallet' | 'cash' | 'mixed';
 
 export type SessionStatus = 'active' | 'completed';
 
@@ -67,10 +71,18 @@ export interface Session {
   status: SessionStatus;
   extended_minutes?: number;
   warning_sent?: boolean;
+  reminders_sent?: string[];
   game_ids?: string[];
+  num_players?: number;
 }
 
 export type MenuCategory = 'snack' | 'drink' | 'combo' | 'package';
+
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  content: string;
+}
 
 export interface MenuItem {
   id: string;
@@ -80,6 +92,7 @@ export interface MenuItem {
   active: boolean;
   package_minutes?: number; // Only used for 'package' category
   stock_quantity?: number; // Inventory tracking for snack/drink
+  low_stock_notified?: boolean;
 }
 
 export type TransactionType = 'session_payment' | 'food_order' | 'wallet_topup' | 'wallet_deduction' | 'session_charge' | 'food_charge' | 'points_redeemed' | 'points_earned' | 'tab_settled';
@@ -95,12 +108,25 @@ export interface Transaction {
   session_id?: string;
 }
 
+export type ExpenseCategory = 'inventory' | 'maintenance' | 'salary' | 'utilities' | 'marketing' | 'other';
+
+export interface Expense {
+  id: string;
+  amount: number;
+  category: ExpenseCategory;
+  note: string;
+  timestamp: number | Date;
+}
+
 export interface AppSettings {
   cafe_name: string;
   cafe_logo_url?: string;
   currency_symbol: string;
   loyalty_conversion_rate: number; // e.g. 10 means 10 points = 1 currency unit
+  loyalty_expiry_enabled?: boolean;
+  loyalty_expiry_days?: number;
   session_start_delay_sec?: number;
+  station_layout_version?: number;
   admin_password?: string;
   google_review_url?: string;
   review_delay_mins?: number; // Configurable delay for automated WhatsApp review requests
@@ -109,6 +135,8 @@ export interface AppSettings {
   invoice_footer_msg?: string;
   invoice_qr_type?: 'none' | 'review' | 'upi';
   invoice_upi_id?: string;
+  owner_phone?: string;
+  low_stock_threshold?: number;
 }
 
 export interface PricingRule {

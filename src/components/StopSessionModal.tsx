@@ -69,7 +69,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         const prepaidMinutes = session.prepaid_duration_mins || 0;
         const totalFreeMinutes = customerFreeMinutes + prepaidMinutes;
         
-        const res = calculateDynamicCost(Number(session.start_time), now, station, rules, totalFreeMinutes);
+        const res = calculateDynamicCost(Number(session.start_time), now, station, rules, totalFreeMinutes, session.num_players);
         gameTimeCost = (session.base_amount || 0) + res.cost;
         usedMins = Math.max(0, res.minutesUsed - prepaidMinutes);
       }
@@ -137,18 +137,14 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
       // 3. Handle Customer tab/wallet
       if (customer) {
         let newWalletBalance = customer.wallet_balance;
-        let newAmountOwed = customer.amount_owed;
 
         if (paymentMode === 'wallet') {
           if (customer.wallet_balance >= bill.total) {
             newWalletBalance = customer.wallet_balance - bill.total;
           } else {
-            const deficit = bill.total - customer.wallet_balance;
             newWalletBalance = 0;
-            newAmountOwed = customer.amount_owed + deficit;
+            // They shouldn't get debt. The rest is assumed paid in cash.
           }
-        } else if (paymentMode === 'tab') {
-          newAmountOwed = customer.amount_owed + bill.total;
         }
         
         await db.transactions.add({
@@ -174,9 +170,10 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         const newLoyaltyPoints = customer.loyalty_points + Math.floor(bill.total / 10) - pointsToRedeem;
         await db.customers.update(customer.id, { 
           wallet_balance: Math.max(0, newWalletBalance),
-          amount_owed: newAmountOwed,
           loyalty_points: newLoyaltyPoints,
-          available_minutes: Math.max(0, customer.available_minutes - minutesUsed) 
+          available_minutes: Math.max(0, customer.available_minutes - minutesUsed),
+          loyalty_points_updated_at: Date.now(),
+          loyalty_reminder_sent: false
         });
 
         if (customer.phone && sendInvoice && settings) {
@@ -245,186 +242,235 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
     }
   };
 
-  const handlePreviewPDF = async () => {
-    if (!settings || !station || !session) return;
-    const completedSession = { 
-      ...session, 
-      status: 'completed' as const, 
-      end_time: Date.now(), 
-      total_amount: bill.total, 
-      base_amount: bill.gameTime, // Fix: pass calculated dynamic time cost to PDF
-      payment_mode: paymentMode as any 
-    };
-    const invoiceData = {
-      customerName: customer ? customer.name : 'Walk-in',
-      customerPhone: customer ? customer.phone : '',
-      pointsEarned: Math.floor(bill.total / 10),
-      pointsRedeemed: pointsToRedeem,
-      loyaltyDiscount: bill.discount,
-      specialDiscount: bill.specialDiscountAmt || 0,
-      customDiscount: bill.customDiscountAmt || 0
-    };
-    try {
-      const pdfBlob = await generateInvoicePDF(completedSession, station, settings, invoiceData);
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      setPdfPreviewUrl(pdfUrl);
-    } catch (e) {
-      console.error(e);
-      alert('Failed to generate PDF preview.');
-    }
-  };
-
-  if (pdfPreviewUrl) {
-    return (
-      <Dialog open={true} onOpenChange={(open) => !open && setPdfPreviewUrl(null)}>
-        <DialogContent className="bg-card text-card-foreground border-border max-w-sm h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Bill Preview (POS Format)</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 w-full bg-white rounded-md overflow-hidden border border-border">
-            <iframe src={pdfPreviewUrl} className="w-full h-full" title="PDF Preview" />
-          </div>
-          <DialogFooter className="mt-2">
-            <Button variant="outline" onClick={() => setPdfPreviewUrl(null)} className="w-full">Close Preview</Button>
-            <Button onClick={() => {
-              const newWindow = window.open();
-              if (newWindow) {
-                newWindow.document.write(`<iframe width='100%' height='100%' src='${pdfPreviewUrl}' style='border:none'></iframe>`);
-                setTimeout(() => newWindow.print(), 500);
-              }
-            }} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white">
-              Print
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  // HTML Receipt rendering (No PDF on-the-fly)
+  const currencyStr = settings?.currency_symbol === '₹' ? 'Rs.' : settings?.currency_symbol || '₹';
+  const startDate = session ? new Date(session.start_time) : new Date();
+  const endDate = session?.end_time ? new Date(session.end_time) : new Date();
 
   return (
     <Dialog open={!!session} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="bg-card text-card-foreground border-border max-w-md">
-        <DialogHeader>
-          <DialogTitle>Checkout: {station?.name}</DialogTitle>
-        </DialogHeader>
+      <DialogContent className="bg-card text-card-foreground border-border max-w-5xl p-0 overflow-hidden flex flex-col md:flex-row h-[85vh]">
         
-        <div className="space-y-6 py-4">
-          <div className="bg-muted/50 p-4 rounded-lg space-y-2 font-mono text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Gaming Time</span>
-              <span>₹ {bill.gameTime.toFixed(2)}</span>
-            </div>
-            {minutesUsed > 0 && (
-              <div className="flex justify-between text-indigo-400">
-                <span>Time Credit Applied</span>
-                <span>- {minutesUsed} mins</span>
+        {/* Left Side: Checkout Form */}
+        <div className="w-full md:w-[450px] flex flex-col border-r border-border h-full bg-background">
+          <DialogHeader className="px-6 py-4 border-b border-border">
+            <DialogTitle>Checkout: {station?.name}</DialogTitle>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+            <div className="bg-muted/50 p-4 rounded-lg space-y-2 font-mono text-sm border border-white/5 shadow-inner">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Gaming Time</span>
+                <span>₹ {bill.gameTime.toFixed(2)}</span>
               </div>
-            )}
-            {session?.orders.map((o, i) => (
-              <div key={i} className="flex justify-between">
-                <span className="text-muted-foreground">{o.quantity}x {o.name}</span>
-                <span>₹ {(o.price_at_order * o.quantity).toFixed(2)}</span>
+              {minutesUsed > 0 && (
+                <div className="flex justify-between text-indigo-400">
+                  <span>Time Credit Applied</span>
+                  <span>- {minutesUsed} mins</span>
+                </div>
+              )}
+              {session?.orders.map((o, i) => (
+                <div key={i} className="flex justify-between">
+                  <span className="text-muted-foreground">{o.quantity}x {o.name}</span>
+                  <span>₹ {(o.price_at_order * o.quantity).toFixed(2)}</span>
+                </div>
+              ))}
+              {pointsToRedeem > 0 && (
+                 <div className="flex justify-between text-emerald-500">
+                   <span>Points Discount</span>
+                   <span>- ₹ {bill.discount.toFixed(2)}</span>
+                 </div>
+              )}
+              {bill.specialDiscountAmt > 0 && (
+                 <div className="flex justify-between text-emerald-500">
+                   <span>Special Day Discount</span>
+                   <span>- ₹ {bill.specialDiscountAmt.toFixed(2)}</span>
+                 </div>
+              )}
+              {bill.customDiscountAmt > 0 && (
+                 <div className="flex justify-between text-emerald-500">
+                   <span>Custom Discount</span>
+                   <span>- ₹ {bill.customDiscountAmt.toFixed(2)}</span>
+                 </div>
+              )}
+              <div className="border-t border-border pt-2 mt-2 flex justify-between font-bold text-xl text-foreground">
+                <span>Total Bill</span>
+                <span>₹ {bill.total.toFixed(2)}</span>
               </div>
-            ))}
-            {pointsToRedeem > 0 && (
-               <div className="flex justify-between text-emerald-500">
-                 <span>Points Discount</span>
-                 <span>- ₹ {bill.discount.toFixed(2)}</span>
-               </div>
-            )}
-            {bill.specialDiscountAmt > 0 && (
-               <div className="flex justify-between text-emerald-500">
-                 <span>Special Day Discount</span>
-                 <span>- ₹ {bill.specialDiscountAmt.toFixed(2)}</span>
-               </div>
-            )}
-            {bill.customDiscountAmt > 0 && (
-               <div className="flex justify-between text-emerald-500">
-                 <span>Custom Discount</span>
-                 <span>- ₹ {bill.customDiscountAmt.toFixed(2)}</span>
-               </div>
-            )}
-            <div className="border-t border-border pt-2 mt-2 flex justify-between font-bold text-lg text-foreground">
-              <span>Total Bill</span>
-              <span>₹ {bill.total.toFixed(2)}</span>
             </div>
-          </div>
 
-          {customer && (
-            <div className="space-y-2">
-              <Label htmlFor="points">Redeem Points (Balance: {customer.loyalty_points})</Label>
-              <div className="flex gap-2">
-                <Input 
-                  id="points" 
-                  type="number" 
-                  min="0" 
-                  max={customer.loyalty_points} 
-                  value={pointsToRedeem} 
-                  onChange={(e) => {
-                    const val = Math.min(Number(e.target.value) || 0, customer.loyalty_points);
-                    setPointsToRedeem(val);
-                  }}
-                  className="border-border bg-background"
-                />
-                <Button variant="secondary" onClick={() => setPointsToRedeem(customer.loyalty_points)}>Max</Button>
+            {customer && (
+              <div className="space-y-3">
+                <Label htmlFor="points" className="text-sm font-semibold text-foreground/90">Redeem Points (Balance: {customer.loyalty_points})</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    id="points" 
+                    type="number" 
+                    min="0" 
+                    max={Math.min(customer.loyalty_points, Math.ceil(bill.subtotal * conversionRate))} 
+                    value={pointsToRedeem} 
+                    onChange={(e) => {
+                      const maxRedeemableForBill = Math.ceil(bill.subtotal * conversionRate);
+                      const maxAllowed = Math.min(customer.loyalty_points, maxRedeemableForBill);
+                      const val = Math.min(Number(e.target.value) || 0, maxAllowed);
+                      setPointsToRedeem(val);
+                    }}
+                    className="border-white/10 bg-black/40 shadow-inner"
+                  />
+                  <Button 
+                    variant="secondary" 
+                    className="bg-white/10 hover:bg-white/20 border border-white/5" 
+                    onClick={() => {
+                      const maxRedeemableForBill = Math.ceil(bill.subtotal * conversionRate);
+                      setPointsToRedeem(Math.min(customer.loyalty_points, maxRedeemableForBill));
+                    }}
+                  >
+                    Max
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground/70">{conversionRate} Points = ₹ 1 Discount</p>
               </div>
-              <p className="text-xs text-muted-foreground">{conversionRate} Points = ₹ 1 Discount</p>
-            </div>
-          )}
+            )}
 
-          {customer && (
-            <div className="space-y-2">
-              <Label htmlFor="customDiscount">Custom Discount for Regulars</Label>
-              <Select value={customDiscount.toString()} onValueChange={(v) => setCustomDiscount(Number(v))}>
-                <SelectTrigger id="customDiscount" className="border-border">
-                  <SelectValue placeholder="No Discount" />
+            {customer && (
+              <div className="space-y-3">
+                <Label htmlFor="customDiscount" className="text-sm font-semibold text-foreground/90">Custom Discount for Regulars</Label>
+                <Select value={customDiscount.toString()} onValueChange={(v) => setCustomDiscount(Number(v))}>
+                  <SelectTrigger id="customDiscount" className="border-white/10 bg-black/40">
+                    <SelectValue placeholder="No Discount" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">None (0%)</SelectItem>
+                    <SelectItem value="10">10% Off</SelectItem>
+                    <SelectItem value="20">20% Off</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <Label htmlFor="payment" className="text-sm font-semibold text-foreground/90">Payment Mode</Label>
+              <Select value={paymentMode} onValueChange={setPaymentMode}>
+                <SelectTrigger id="payment" className="border-white/10 bg-black/40">
+                  <SelectValue placeholder="Select Payment Mode" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="0">None (0%)</SelectItem>
-                  <SelectItem value="10">10% Off</SelectItem>
-                  <SelectItem value="20">20% Off</SelectItem>
+                  <SelectItem value="cash">Cash / UPI</SelectItem>
+                  {customer && <SelectItem value="wallet">Wallet (Bal: ₹{customer.wallet_balance})</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
-          )}
 
-          <div className="space-y-2">
-            <Label htmlFor="payment">Payment Mode</Label>
-            <Select value={paymentMode} onValueChange={setPaymentMode}>
-              <SelectTrigger id="payment" className="border-border">
-                <SelectValue placeholder="Select Payment Mode" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">Cash / UPI</SelectItem>
-                {customer && <SelectItem value="wallet">Wallet (Bal: ₹{customer.wallet_balance})</SelectItem>}
-                {customer && <SelectItem value="tab">Add to Tab (Owed: ₹{customer.amount_owed})</SelectItem>}
-              </SelectContent>
-            </Select>
+            {customer && customer.phone && (
+              <div className="flex items-center space-x-3 pt-2 pb-4">
+                <input 
+                  type="checkbox" 
+                  id="sendInvoice"
+                  checked={sendInvoice} 
+                  onChange={(e) => setSendInvoice(e.target.checked)}
+                  className="w-5 h-5 rounded border-white/10 bg-black/40 text-indigo-500 focus:ring-indigo-500/50"
+                />
+                <Label htmlFor="sendInvoice" className="cursor-pointer font-medium text-indigo-100">Send Invoice via WhatsApp now</Label>
+              </div>
+            )}
           </div>
-
-          {customer && customer.phone && (
-            <div className="flex items-center space-x-2 pt-2">
-              <input 
-                type="checkbox" 
-                id="sendInvoice"
-                checked={sendInvoice} 
-                onChange={(e) => setSendInvoice(e.target.checked)}
-                className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-              />
-              <Label htmlFor="sendInvoice" className="cursor-pointer">Send Invoice via WhatsApp now</Label>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="w-full sm:justify-between items-center">
-          <Button variant="ghost" onClick={handlePreviewPDF} className="text-indigo-400">Preview Bill</Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={loading} className="border-border">Cancel</Button>
-            <Button onClick={handleCheckout} disabled={loading} className="bg-primary text-primary-foreground hover:bg-primary/90">
+          <div className="p-4 border-t border-border mt-auto flex gap-3 bg-black/20">
+            <Button variant="outline" onClick={onClose} disabled={loading} className="flex-1 border-white/10 hover:bg-white/5">Cancel</Button>
+            <Button onClick={handleCheckout} disabled={loading} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25">
               {loading ? 'Processing...' : 'Complete Checkout'}
             </Button>
           </div>
-        </DialogFooter>
+        </div>
+
+        {/* Right Side: HTML Receipt Preview */}
+        <div className="flex-1 h-full bg-[#f4f4f4] relative hidden md:flex items-center justify-center p-8 overflow-y-auto">
+          <div className="bg-white text-black w-full max-w-sm min-h-[500px] shadow-2xl p-6 font-mono text-sm leading-relaxed" style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
+            <h2 className="text-center font-bold text-xl mb-4">{settings?.cafe_name || 'INVOICE'}</h2>
+            
+            <div className="text-xs mb-4">
+              <div>Date: {startDate.toLocaleDateString()}</div>
+              <div>Time: {startDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - {endDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+              <div>Customer: {customer ? customer.name : 'Walk-in'}</div>
+              <div>Phone: {customer ? customer.phone : 'N/A'}</div>
+              <div>Station: {station?.name}</div>
+            </div>
+
+            <table className="w-full text-xs mb-4">
+              <thead>
+                <tr className="border-b border-black">
+                  <th className="text-left font-bold py-1">Item</th>
+                  <th className="text-center font-bold py-1 w-12">Qty</th>
+                  <th className="text-right font-bold py-1 w-20">Amt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {session?.base_amount && session.base_amount > 0 ? (
+                  <tr>
+                    <td className="py-1">Gaming Time</td>
+                    <td className="text-center py-1">1</td>
+                    <td className="text-right py-1">{currencyStr} {session.base_amount.toFixed(2)}</td>
+                  </tr>
+                ) : null}
+                
+                {session?.extended_minutes && session.extended_minutes > 0 ? (
+                  <tr>
+                    <td className="py-1">Extended ({session.extended_minutes}m)</td>
+                    <td className="text-center py-1">1</td>
+                    <td className="text-right py-1">{currencyStr} {((session.extended_minutes / 60) * (station?.hourly_rate || 0)).toFixed(2)}</td>
+                  </tr>
+                ) : null}
+
+                {session?.orders.map((o, idx) => (
+                  <tr key={idx}>
+                    <td className="py-1">{o.name}</td>
+                    <td className="text-center py-1">{o.quantity}</td>
+                    <td className="text-right py-1">{currencyStr} {(o.price_at_order * o.quantity).toFixed(2)}</td>
+                  </tr>
+                ))}
+
+                {bill.discount > 0 && (
+                  <tr>
+                    <td className="py-1 text-gray-600">Loyalty ({pointsToRedeem} pts)</td>
+                    <td className="text-center py-1 text-gray-600">1</td>
+                    <td className="text-right py-1 text-gray-600">- {currencyStr} {bill.discount.toFixed(2)}</td>
+                  </tr>
+                )}
+                {bill.specialDiscountAmt > 0 && (
+                  <tr>
+                    <td className="py-1 text-gray-600">Special Discount</td>
+                    <td className="text-center py-1 text-gray-600">1</td>
+                    <td className="text-right py-1 text-gray-600">- {currencyStr} {bill.specialDiscountAmt.toFixed(2)}</td>
+                  </tr>
+                )}
+                {bill.customDiscountAmt > 0 && (
+                  <tr>
+                    <td className="py-1 text-gray-600">Custom Discount</td>
+                    <td className="text-center py-1 text-gray-600">1</td>
+                    <td className="text-right py-1 text-gray-600">- {currencyStr} {bill.customDiscountAmt.toFixed(2)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <div className="border-t-2 border-black pt-2 flex justify-between font-bold text-base">
+              <span>Total:</span>
+              <span>{currencyStr} {bill.total.toFixed(2)}</span>
+            </div>
+
+            <div className="mt-6 text-center text-xs font-bold">
+              + {Math.floor(bill.total / 10)} Loyalty Pts!
+              {settings?.loyalty_expiry_enabled && (
+                <div className="text-[10px] font-normal mt-1 text-gray-500 italic">
+                  (Expires in {settings.loyalty_expiry_days || 30} days)
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-2 text-center text-xs italic text-gray-600">
+              {settings?.invoice_footer_msg || 'Thank you!'}
+            </div>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

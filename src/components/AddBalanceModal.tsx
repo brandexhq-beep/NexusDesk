@@ -56,6 +56,27 @@ export function AddBalanceModal({ customer, onClose, onAdd }: AddBalanceModalPro
         await db.customers.update(customer.id, {
           loyalty_points: customer.loyalty_points + Math.floor(paid / 10)
         });
+
+        // Send Invoice for Time Purchase
+        if (customer.phone) {
+          try {
+            await fetch('http://localhost:3001/send-invoice', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone: customer.phone,
+                customerName: customer.name,
+                items: [{ name: `Time Added (${totalMins} mins)`, quantity: 1, price: paid }],
+                total: paid,
+                subtotal: paid,
+                discount: 0,
+                type: 'receipt'
+              })
+            });
+          } catch (e) {
+            console.error("WhatsApp invoice error:", e);
+          }
+        }
       }
 
       onAdd();
@@ -94,6 +115,27 @@ export function AddBalanceModal({ customer, onClose, onAdd }: AddBalanceModalPro
         await db.customers.update(customer.id, {
           loyalty_points: customer.loyalty_points + Math.floor(amt / 10)
         });
+
+        // Send Invoice for Wallet Top-up
+        if (customer.phone) {
+          try {
+            await fetch('http://localhost:3001/send-invoice', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone: customer.phone,
+                customerName: customer.name,
+                items: [{ name: `Wallet Top-up`, quantity: 1, price: amt }],
+                total: amt,
+                subtotal: amt,
+                discount: 0,
+                type: 'receipt'
+              })
+            });
+          } catch (e) {
+            console.error("WhatsApp invoice error:", e);
+          }
+        }
       }
 
       onAdd();

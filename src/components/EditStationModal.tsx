@@ -17,13 +17,20 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
   const [name, setName] = useState('');
   const [hourlyRate, setHourlyRate] = useState('');
   const [gracePeriod, setGracePeriod] = useState('0');
+  const [installedGames, setInstalledGames] = useState<string[]>([]);
+  const [games, setGames] = useState<import('../types').Game[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    db.games.getAll().then(setGames);
+  }, []);
 
   useEffect(() => {
     if (station) {
       setName(station.name);
       setHourlyRate(station.hourly_rate.toString());
       setGracePeriod(station.grace_period_minutes?.toString() || '0');
+      setInstalledGames(station.installed_games || []);
     }
   }, [station]);
 
@@ -34,7 +41,8 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
       await db.stations.update(station.id, {
         name,
         hourly_rate: Number(hourlyRate),
-        grace_period_minutes: Number(gracePeriod)
+        grace_period_minutes: Number(gracePeriod),
+        installed_games: installedGames
       });
       onUpdate();
       onClose();
@@ -68,7 +76,7 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
           <DialogTitle>Edit Station</DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4 mt-4">
+        <div className="space-y-4 mt-4 h-96 overflow-y-auto pr-2">
           <div className="space-y-2">
             <Label>Station Name</Label>
             <Input 
@@ -102,6 +110,30 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
               <span className="absolute right-3 top-2.5 text-muted-foreground text-sm">mins</span>
             </div>
             <p className="text-[10px] text-muted-foreground">Free time before billing starts.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Installed Games (Optional)</Label>
+            <p className="text-[10px] text-muted-foreground">Select which games are available on this station.</p>
+            <div className="grid grid-cols-2 gap-2 border border-white/5 rounded-md p-3 bg-black/20 max-h-48 overflow-y-auto">
+              {games.filter(g => g.active).map(game => (
+                <label key={game.id} className="flex items-center gap-2 cursor-pointer group">
+                  <input 
+                    type="checkbox"
+                    checked={installedGames.includes(game.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setInstalledGames([...installedGames, game.id]);
+                      } else {
+                        setInstalledGames(installedGames.filter(id => id !== game.id));
+                      }
+                    }}
+                    className="rounded border-white/20 bg-black/40 text-indigo-500 focus:ring-indigo-500/50 cursor-pointer"
+                  />
+                  <span className="text-xs text-muted-foreground group-hover:text-white transition-colors">{game.name}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <Button onClick={handleSave} disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white mt-4">

@@ -17,6 +17,8 @@ export function Settings() {
     cafe_logo_url: '',
     currency_symbol: '',
     loyalty_conversion_rate: '',
+    loyalty_expiry_enabled: false,
+    loyalty_expiry_days: '',
     session_start_delay_sec: '',
     admin_password: '',
     google_review_url: '',
@@ -25,7 +27,9 @@ export function Settings() {
     special_discount_percent: '',
     invoice_footer_msg: '',
     invoice_qr_type: 'none',
-    invoice_upi_id: ''
+    invoice_upi_id: '',
+    owner_phone: '',
+    low_stock_threshold: '5'
   });
   const [loading, setLoading] = useState(false);
 
@@ -55,6 +59,8 @@ export function Settings() {
       cafe_logo_url: data.cafe_logo_url || '',
       currency_symbol: data.currency_symbol || '',
       loyalty_conversion_rate: data.loyalty_conversion_rate.toString(),
+      loyalty_expiry_enabled: !!data.loyalty_expiry_enabled,
+      loyalty_expiry_days: data.loyalty_expiry_days?.toString() || '30',
       session_start_delay_sec: data.session_start_delay_sec?.toString() || '0',
       admin_password: data.admin_password || 'admin',
       google_review_url: data.google_review_url || '',
@@ -63,7 +69,9 @@ export function Settings() {
       special_discount_percent: data.special_discount_percent?.toString() || '0',
       invoice_footer_msg: data.invoice_footer_msg || '',
       invoice_qr_type: data.invoice_qr_type || 'none',
-      invoice_upi_id: data.invoice_upi_id || ''
+      invoice_upi_id: data.invoice_upi_id || '',
+      owner_phone: data.owner_phone || '',
+      low_stock_threshold: data.low_stock_threshold?.toString() || '5'
     });
   };
 
@@ -125,6 +133,8 @@ export function Settings() {
         cafe_logo_url: formData.cafe_logo_url,
         currency_symbol: formData.currency_symbol,
         loyalty_conversion_rate: Number(formData.loyalty_conversion_rate),
+        loyalty_expiry_enabled: formData.loyalty_expiry_enabled,
+        loyalty_expiry_days: Number(formData.loyalty_expiry_days),
         session_start_delay_sec: Number(formData.session_start_delay_sec),
         admin_password: formData.admin_password,
         google_review_url: formData.google_review_url,
@@ -133,7 +143,9 @@ export function Settings() {
         special_discount_percent: Number(formData.special_discount_percent),
         invoice_footer_msg: formData.invoice_footer_msg,
         invoice_qr_type: formData.invoice_qr_type as any,
-        invoice_upi_id: formData.invoice_upi_id
+        invoice_upi_id: formData.invoice_upi_id,
+        owner_phone: formData.owner_phone,
+        low_stock_threshold: Number(formData.low_stock_threshold)
       });
       await loadSettings();
     } catch (e) {
@@ -190,7 +202,7 @@ export function Settings() {
       </div>
 
       <Tabs defaultValue="general" className="w-full" onValueChange={(val) => val === 'whatsapp' ? startWhatsAppPolling() : stopWhatsAppPolling()}>
-        <TabsList className="grid w-full grid-cols-5 max-w-3xl bg-black/40 border border-white/5 mb-6">
+        <TabsList className="flex flex-wrap h-auto w-full max-w-3xl bg-black/40 border border-white/5 mb-6 justify-start">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="invoice">Invoice</TabsTrigger>
           <TabsTrigger value="pricing">Dynamic Pricing</TabsTrigger>
@@ -217,6 +229,28 @@ export function Settings() {
                     className="border-white/10 bg-background/50"
                   />
                   <p className="text-[10px] text-muted-foreground">Countdown delay before a session starts tracking time.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Owner Phone Number (For Alerts)</Label>
+                  <Input 
+                    type="text" 
+                    value={formData.owner_phone} 
+                    onChange={(e) => setFormData({...formData, owner_phone: e.target.value})}
+                    placeholder="e.g. 919876543210"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Receive WhatsApp alerts (e.g. for low inventory) on this number.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Low Stock Warning Threshold</Label>
+                  <Input 
+                    type="number" min="0"
+                    value={formData.low_stock_threshold} 
+                    onChange={(e) => setFormData({...formData, low_stock_threshold: e.target.value})}
+                    placeholder="e.g. 5"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Get alerted when a snack or drink drops below this number.</p>
                 </div>
               </div>
             </CardContent>
@@ -443,17 +477,51 @@ export function Settings() {
               <CardDescription>Configure how loyalty points are earned and redeemed.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Conversion Rate</Label>
-                <div className="flex items-center gap-3">
-                  <Input 
-                    type="number" 
-                    min="1"
-                    value={formData.loyalty_conversion_rate} 
-                    onChange={(e) => setFormData({...formData, loyalty_conversion_rate: e.target.value})}
-                    className="border-white/10 bg-background/50 w-32"
-                  />
-                  <span className="text-muted-foreground">points equals {formData.currency_symbol} 1 discount.</span>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Conversion Rate</Label>
+                  <div className="flex items-center gap-3">
+                    <Input 
+                      type="number" 
+                      min="1"
+                      value={formData.loyalty_conversion_rate} 
+                      onChange={(e) => setFormData({...formData, loyalty_conversion_rate: e.target.value})}
+                      className="border-white/10 bg-background/50 w-32"
+                    />
+                    <span className="text-muted-foreground">points equals {formData.currency_symbol} 1 discount.</span>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-white/5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-base">Enable Points Expiration</Label>
+                      <p className="text-xs text-muted-foreground mt-1">If enabled, unused points will automatically expire after a set time.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={formData.loyalty_expiry_enabled}
+                        onChange={(e) => setFormData({...formData, loyalty_expiry_enabled: e.target.checked})}
+                      />
+                      <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
+                  
+                  {formData.loyalty_expiry_enabled && (
+                    <div className="space-y-2 max-w-xs pl-4 border-l-2 border-emerald-500/50">
+                      <Label>Expiration Time (Days)</Label>
+                      <Input 
+                        type="number" 
+                        min="1"
+                        value={formData.loyalty_expiry_days} 
+                        onChange={(e) => setFormData({...formData, loyalty_expiry_days: e.target.value})}
+                        className="border-white/10 bg-background/50"
+                      />
+                      <p className="text-[10px] text-muted-foreground">e.g., 30 for one month. A 1-week warning will be sent via WhatsApp.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>

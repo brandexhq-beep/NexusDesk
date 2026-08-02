@@ -1,11 +1,27 @@
 import type { PricingRule, Station } from '../types';
 
+const PS5_PRICING_MATRIX: Record<number, Record<number, number>> = {
+  5: { 1: 16, 2: 23, 3: 32, 4: 37 },
+  10: { 1: 32, 2: 46, 3: 64, 4: 74 },
+  15: { 1: 50, 2: 70, 3: 95, 4: 111 },
+  20: { 1: 66, 2: 93, 3: 127, 4: 150 },
+  25: { 1: 82, 2: 116, 3: 158, 4: 187 },
+  30: { 1: 100, 2: 140, 3: 190, 4: 224 },
+  35: { 1: 116, 2: 163, 3: 222, 4: 261 },
+  40: { 1: 132, 2: 186, 3: 253, 4: 300 },
+  45: { 1: 150, 2: 210, 3: 285, 4: 337 },
+  50: { 1: 164, 2: 233, 3: 317, 4: 374 },
+  55: { 1: 180, 2: 256, 3: 348, 4: 411 },
+  60: { 1: 200, 2: 280, 3: 380, 4: 450 }
+};
+
 export function calculateDynamicCost(
   startTimeMs: number, 
   endTimeMs: number, 
   station: Station, 
   rules: PricingRule[],
-  freeMinutes: number = 0
+  freeMinutes: number = 0,
+  numPlayers: number = 1
 ): { cost: number, minutesUsed: number } {
   let cost = 0;
   let minutesUsed = 0;
@@ -27,6 +43,29 @@ export function calculateDynamicCost(
   const minsToSkip = Math.min(freeMinutes, remainingDurationAfterGrace);
   let effectiveStartMins = startAfterGraceMins + minsToSkip;
   minutesUsed += minsToSkip;
+
+  const billableMins = endMins - effectiveStartMins;
+  if (billableMins <= 0) {
+    return { cost: 0, minutesUsed };
+  }
+
+  // Hardcoded PS5 Pricing Matrix Override
+  if (station.type.startsWith('ps5')) {
+    const players = Math.min(Math.max(1, numPlayers), 4);
+    const hours = Math.floor(billableMins / 60);
+    const remainingMins = billableMins % 60;
+    
+    let totalCost = hours * PS5_PRICING_MATRIX[60][players];
+    
+    if (remainingMins > 0) {
+      // Find the next available 5-min chunk
+      const chunks = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+      const matchedChunk = chunks.find(c => c >= remainingMins) || 60;
+      totalCost += PS5_PRICING_MATRIX[matchedChunk][players];
+    }
+    
+    return { cost: totalCost, minutesUsed };
+  }
 
   // Calculate chunks of time instead of iterating minute by minute
   let currMins = effectiveStartMins;

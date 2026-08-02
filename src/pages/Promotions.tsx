@@ -1,0 +1,328 @@
+import { useEffect, useState } from 'react';
+import { db } from '../services/db';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Trash2, Send, Clock, Plus, Users, Calendar } from 'lucide-react';
+import type { MessageTemplate, Customer } from '../types';
+import { toast } from 'sonner';
+
+export function Promotions() {
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
+  
+  const [newTemplate, setNewTemplate] = useState({ name: '', content: '' });
+  const [campaign, setCampaign] = useState({ name: '', templateId: '', scheduleMins: '0', imageBase64: '' });
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadJobs, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadData = async () => {
+    const t = await db.templates.getAll();
+    const c = await db.customers.getAll();
+    setTemplates(t);
+    setCustomers(c);
+    loadJobs();
+  };
+
+  const loadJobs = async () => {
+    try {
+      const res = await fetch('http://localhost:3001/promotions');
+      if (res.ok) {
+        const data = await res.json();
+        setJobs(data);
+      }
+    } catch (e) {
+      console.error('Failed to load jobs');
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setCampaign({ ...campaign, imageBase64: ev.target?.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    if (!newTemplate.name || !newTemplate.content) {
+      toast.error('Please fill all template fields');
+      return;
+    }
+    await db.templates.add(newTemplate);
+    setNewTemplate({ name: '', content: '' });
+    toast.success('Template saved!');
+    loadData();
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    await db.templates.delete(id);
+    toast.success('Template deleted');
+    loadData();
+  };
+
+  const handleScheduleCampaign = async () => {
+    if (!campaign.name || !campaign.templateId) {
+      toast.error('Please select a campaign name and template');
+      return;
+    }
+    
+    const template = templates.find(t => t.id === campaign.templateId);
+    if (!template) return;
+
+    const phones = customers.map(c => c.phone).filter(p => !!p);
+    if (phones.length === 0) {
+      toast.error('No valid customers found to message.');
+      return;
+    }
+
+    const scheduledAt = Date.now() + (Number(campaign.scheduleMins) * 60000);
+
+    try {
+      const res = await fetch('http://localhost:3001/promotions/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: campaign.name,
+          message: template.content,
+          scheduledAt,
+          recipients: phones,
+          imageBase64: campaign.imageBase64 || null
+        })
+      });
+      if (res.ok) {
+        toast.success(`Campaign scheduled for ${phones.length} customers!`);
+        setCampaign({ name: '', templateId: '', scheduleMins: '0', imageBase64: '' });
+        const fileInput = document.getElementById('promo-image') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+        loadJobs();
+      } else {
+        toast.error('Failed to schedule campaign');
+      }
+    } catch (e) {
+      toast.error('Server error connecting to WhatsApp server');
+    }
+  };
+
+  const handleDeleteJob = async (id: string) => {
+    try {
+      await fetch(`http://localhost:3001/promotions/${id}`, { method: 'DELETE' });
+      toast.success('Job deleted');
+      loadJobs();
+    } catch (e) {
+      toast.error('Failed to delete job');
+    }
+  };
+
+  // JobProgress component to encapsulate polling for a specific job's progress
+  const JobProgress = ({ jobId, initialTotal }: { jobId: string, initialTotal: number }) => {
+    const [progress, setProgress] = useState({ total: initialTotal, sent: 0, failed: 0 });
+
+    useEffect(() => {
+      const fetchProgress = async () => {
+        try {
+          const res = await fetch(`http://localhost:3001/promotions/progress/${jobId}`);
+          if (res.ok) {
+            const data = await res.json();
+            setProgress(data);
+          }
+        } catch(e) {}
+      };
+      fetchProgress();
+      const interval = setInterval(fetchProgress, 5000);
+      return () => clearInterval(interval);
+    }, [jobId]);
+
+    const percentage = progress.total > 0 ? Math.round(((progress.sent + progress.failed) / progress.total) * 100) : 0;
+
+    return (
+      <div className="mt-2 space-y-1">
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Sent: {progress.sent} | Failed: {progress.failed}</span>
+          <span>{percentage}%</span>
+        </div>
+        <div className="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
+          <div className="bg-emerald-500 h-full transition-all duration-500" style={{ width: `${percentage}%` }} />
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Promotions Center</h1>
+        <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-muted-foreground backdrop-blur-md">
+          <Users className="w-4 h-4 text-indigo-400" />
+          <span className="text-sm font-medium">{customers.length} Customers Available</span>
+        </div>
+      </div>
+
+      <Tabs defaultValue="campaigns" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md bg-black/40 border border-white/5 mb-6">
+          <TabsTrigger value="campaigns">Active Campaigns</TabsTrigger>
+          <TabsTrigger value="templates">Message Templates</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="campaigns" className="space-y-6">
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle>Schedule New Blast</CardTitle>
+              <CardDescription>Send a promotional message to all registered customers.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Campaign Name</Label>
+                  <Input 
+                    placeholder="e.g. Weekend Offer" 
+                    value={campaign.name}
+                    onChange={e => setCampaign({...campaign, name: e.target.value})}
+                    className="bg-black/50 border-white/10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Select Template</Label>
+                  <select 
+                    className="flex h-10 w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={campaign.templateId}
+                    onChange={e => setCampaign({...campaign, templateId: e.target.value})}
+                  >
+                    <option value="">-- Choose Template --</option>
+                    {templates.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Delay (Minutes)</Label>
+                  <Input 
+                    type="number"
+                    min="0"
+                    placeholder="0 for immediate" 
+                    value={campaign.scheduleMins}
+                    onChange={e => setCampaign({...campaign, scheduleMins: e.target.value})}
+                    className="bg-black/50 border-white/10"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Delay before starting the blast.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Attach Image (Optional)</Label>
+                  <Input 
+                    type="file"
+                    accept="image/*"
+                    id="promo-image"
+                    onChange={handleImageUpload}
+                    className="bg-black/50 border-white/10 text-muted-foreground file:text-white"
+                  />
+                  <p className="text-[10px] text-muted-foreground">This image will be sent along with your message.</p>
+                </div>
+              </div>
+              <Button onClick={handleScheduleCampaign} className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700">
+                <Send className="w-4 h-4 mr-2" /> Schedule Campaign
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle>Scheduled & Recent Jobs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {jobs.length === 0 ? (
+                <div className="text-muted-foreground text-center py-4">No active or recent campaigns.</div>
+              ) : (
+                <div className="space-y-3">
+                  {jobs.map(job => (
+                    <div key={job.id} className="flex justify-between items-center p-4 border border-white/5 rounded-xl bg-black/20">
+                      <div className="flex-1 mr-4">
+                        <div className="flex justify-between items-start">
+                          <h4 className="font-bold text-white flex items-center gap-2">
+                            {job.name} 
+                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase ${job.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : job.status === 'processing' ? 'bg-blue-500/20 text-blue-400 animate-pulse' : 'bg-orange-500/20 text-orange-400'}`}>
+                              {job.status}
+                            </span>
+                            {job.imageBase64 && <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 text-[10px] uppercase">Includes Image</span>}
+                          </h4>
+                          <p className="text-xs text-muted-foreground">Recipients: {job.recipients.length}</p>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1 mb-2">Scheduled for: {new Date(job.scheduledAt).toLocaleString()}</p>
+                        
+                        {/* Progress Bar (Only show if processing or completed) */}
+                        {(job.status === 'processing' || job.status === 'completed') && (
+                          <JobProgress jobId={job.id} initialTotal={job.recipients.length} />
+                        )}
+                      </div>
+                      <Button variant="ghost" onClick={() => handleDeleteJob(job.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="templates" className="space-y-6">
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle>Create Template</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Template Name</Label>
+                <Input 
+                  placeholder="e.g. Happy Hour" 
+                  value={newTemplate.name}
+                  onChange={e => setNewTemplate({...newTemplate, name: e.target.value})}
+                  className="bg-black/50 border-white/10"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Message Content</Label>
+                <textarea 
+                  placeholder="Type your WhatsApp message here..." 
+                  value={newTemplate.content}
+                  onChange={e => setNewTemplate({...newTemplate, content: e.target.value})}
+                  className="flex min-h-[100px] w-full rounded-md border border-white/10 bg-black/50 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+              <Button onClick={handleCreateTemplate} className="w-full bg-emerald-600 hover:bg-emerald-700">
+                <Plus className="w-4 h-4 mr-2" /> Save Template
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {templates.map(t => (
+              <Card key={t.id} className="bg-black/40 backdrop-blur-md border-white/10">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg flex justify-between items-start">
+                    {t.name}
+                    <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(t.id)} className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

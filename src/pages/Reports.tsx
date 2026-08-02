@@ -13,6 +13,9 @@ export function Reports() {
   const [utilizationData, setUtilizationData] = useState<any[]>([]);
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [monthRevenue, setMonthRevenue] = useState(0);
+  const [monthExpenses, setMonthExpenses] = useState(0);
+  const [popularGames, setPopularGames] = useState<any[]>([]);
+  const [currency, setCurrency] = useState('₹');
 
   useEffect(() => {
     loadData();
@@ -27,7 +30,9 @@ export function Reports() {
     const sessions = await db.sessions.getAll();
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const thirtyDaysAgo = todayStart - 30 * 24 * 60 * 60 * 1000;
+    
+    // Instead of fixed 30/31 days, calculate revenue for the current month
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
     let todayRev = 0;
     let monthRev = 0;
@@ -43,11 +48,25 @@ export function Reports() {
       };
     });
 
+    const settings = await db.settings.get();
+    setCurrency(settings.currency_symbol || '₹');
+
+    const expenses = await db.expenses.getAll();
+    let totalExp = 0;
+    expenses.forEach(e => {
+       if (Number(e.timestamp) >= monthStart) totalExp += e.amount;
+    });
+    setMonthExpenses(totalExp);
+
+    const allGames = await db.games.getAll();
+    const gameCounts: Record<string, number> = {};
+    const hourCounts = Array(24).fill(0);
+
     sessions.forEach(s => {
       if (s.status !== 'completed' || !s.end_time) return;
       const end = Number(s.end_time);
       if (end >= todayStart) todayRev += s.total_amount;
-      if (end >= thirtyDaysAgo) monthRev += s.total_amount;
+      if (end >= monthStart) monthRev += s.total_amount;
       
       const sDate = new Date(end).getDate();
       const weekDay = weekData.find(w => w.date === sDate);
@@ -56,14 +75,34 @@ export function Reports() {
          weekDay.gaming += Math.max(0, s.total_amount - foodCost);
          weekDay.food += foodCost;
       }
+
+      if (s.game_ids) {
+        s.game_ids.forEach(id => {
+          gameCounts[id] = (gameCounts[id] || 0) + 1;
+        });
+      }
+
+      if (s.start_time) {
+         const hour = new Date(Number(s.start_time)).getHours();
+         hourCounts[hour]++;
+      }
     });
+
+    const popular = Object.entries(gameCounts)
+      .map(([id, count]) => {
+        const game = allGames.find(g => g.id === id);
+        return { name: game ? game.name : 'Unknown', count };
+      })
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+    setPopularGames(popular);
     
     // Process standalone food transactions (not attached to completed sessions)
     transactions.forEach(t => {
       if (t.type === 'food_charge' || t.type === 'food_order') {
         const time = Number(t.timestamp);
         if (time >= todayStart) todayRev += t.amount;
-        if (time >= thirtyDaysAgo) monthRev += t.amount;
+        if (time >= monthStart) monthRev += t.amount;
         const sDate = new Date(time).getDate();
         const weekDay = weekData.find(w => w.date === sDate);
         if (weekDay) {
@@ -76,16 +115,12 @@ export function Reports() {
     setMonthRevenue(monthRev);
     setRevenueData(weekData);
 
-    const simulatedUtilization = [
-      { time: '10am', ps5: 20, vr: 10, pc: 5 },
-      { time: '12pm', ps5: 40, vr: 15, pc: 20 },
-      { time: '2pm', ps5: 70, vr: 40, pc: 45 },
-      { time: '4pm', ps5: 90, vr: 60, pc: 80 },
-      { time: '6pm', ps5: 100, vr: 80, pc: 95 },
-      { time: '8pm', ps5: 95, vr: 70, pc: 90 },
-      { time: '10pm', ps5: 60, vr: 30, pc: 50 },
-    ];
-    setUtilizationData(simulatedUtilization);
+    const actualUtilization = hourCounts.map((count, i) => {
+      const ampm = i >= 12 ? 'pm' : 'am';
+      const hour12 = i % 12 || 12;
+      return { time: `${hour12}${ampm}`, sessions: count };
+    }).filter(d => d.sessions > 0 || (parseInt(d.time) >= 10 && parseInt(d.time) <= 22)); // Only show active hours roughly
+    setUtilizationData(actualUtilization);
   };
 
   const handleExportCSV = () => {
@@ -116,23 +151,35 @@ export function Reports() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Today's Revenue</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">₹ {todayRevenue.toLocaleString()}</div>
-            <p className="text-xs text-emerald-500 mt-1">+12% from yesterday</p>
+            <div className="text-3xl font-bold text-foreground">{currency} {todayRevenue.toLocaleString()}</div>
+            <p className="text-xs text-emerald-500 mt-1">Total incoming</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">30 Days Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">This Month's Revenue</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">₹ {monthRevenue.toLocaleString()}</div>
-            <p className="text-xs text-emerald-500 mt-1">+8% from last month</p>
+            <div className="text-3xl font-bold text-foreground">{currency} {monthRevenue.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">Gross revenue</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent pointer-events-none" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Net Profit (Month)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-3xl font-bold ${monthRevenue - monthExpenses >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+              {currency} {(monthRevenue - monthExpenses).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Revenue minus logged expenses</p>
           </CardContent>
         </Card>
       </div>
@@ -162,32 +209,64 @@ export function Reports() {
 
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-card-foreground">Station Utilization (%)</CardTitle>
+            <CardTitle className="text-card-foreground">Peak Hours (Heatmap)</CardTitle>
           </CardHeader>
           <CardContent className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={utilizationData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <BarChart data={utilizationData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                 <XAxis dataKey="time" stroke="#888" />
-                <YAxis stroke="#888" />
+                <YAxis stroke="#888" allowDecimals={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
                 />
-                <Legend />
-                <Line type="monotone" dataKey="ps5" stroke="#3b82f6" activeDot={{ r: 8 }} name="PS5 Stations" />
-                <Line type="monotone" dataKey="vr" stroke="#ec4899" name="VR Stations" />
-                <Line type="monotone" dataKey="pc" stroke="#f59e0b" name="Gaming PCs" />
-              </LineChart>
+                <Bar dataKey="sessions" fill="#ec4899" name="Total Sessions" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="bg-card border-border">
+          <CardHeader>
+          <CardTitle className="text-card-foreground">Game Popularity</CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-muted-foreground">Game Name</TableHead>
+                  <TableHead className="text-muted-foreground text-right">Sessions Played</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {popularGames.map((game, i) => (
+                  <TableRow key={i} className="border-border hover:bg-muted/50">
+                    <TableCell className="font-medium text-foreground flex items-center gap-2">
+                      <span className="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-1 rounded-md">#{i+1}</span>
+                      {game.name}
+                    </TableCell>
+                    <TableCell className="text-right text-emerald-500 font-bold">{game.count}</TableCell>
+                  </TableRow>
+                ))}
+                {popularGames.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={2} className="text-center py-8 text-muted-foreground">
+                      No game data recorded yet. Attach games to sessions to track popularity.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-card-foreground">Top Customers (By Loyalty Points)</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
@@ -215,6 +294,7 @@ export function Reports() {
           </Table>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

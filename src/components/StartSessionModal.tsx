@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
 import type { Station, Customer, MenuItem, Game } from '../types';
 import { X } from 'lucide-react';
+import { calculateDynamicCost } from '../lib/pricing';
 
 interface StartSessionModalProps {
   station: Station | null;
@@ -28,6 +29,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
   const [delaySecs, setDelaySecs] = useState<number>(0);
   const [games, setGames] = useState<{game: Game, available: number}[]>([]);
   const [selectedGameIds, setSelectedGameIds] = useState<string[]>([]);
+  const [numPlayers, setNumPlayers] = useState<number>(1);
 
   useEffect(() => {
     if (station) {
@@ -40,7 +42,12 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
       });
       Promise.all([db.games.getAll(), db.sessions.getAll()]).then(([allGames, allSessions]) => {
         const activeSessions = allSessions.filter(s => s.status === 'active');
-        const availableGames = allGames.map(game => {
+        
+        const stationGames = station.installed_games 
+          ? allGames.filter(g => station.installed_games!.includes(g.id))
+          : allGames;
+
+        const availableGames = stationGames.map(game => {
           const inUse = activeSessions.reduce((count, s) => {
             return count + (s.game_ids?.includes(game.id) ? 1 : 0);
           }, 0);
@@ -61,7 +68,8 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
       const prepaidDuration = isPrepaid ? (parseInt(prepaidHours) || 0) * 60 + (parseInt(prepaidMinutes) || 0) : null;
       let baseAmount = selectedCombo ? selectedCombo.price : 0;
       if (!selectedCombo && prepaidDuration) {
-        baseAmount = (prepaidDuration / 60) * station.hourly_rate;
+        const { cost } = calculateDynamicCost(0, prepaidDuration * 60000, station, [], 0, numPlayers);
+        baseAmount = cost;
       }
       
       await db.sessions.add({
@@ -78,7 +86,8 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
         total_amount: 0,
         payment_mode: null,
         status: 'active',
-        game_ids: selectedGameIds
+        game_ids: selectedGameIds,
+        num_players: station.type.startsWith('ps5') ? numPlayers : undefined
       });
 
       await db.stations.update(station.id, { status: 'occupied' });
@@ -246,6 +255,23 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
               </SelectContent>
             </Select>
           </div>
+          
+          {station?.type.startsWith('ps5') && (
+            <div className="space-y-2">
+              <Label htmlFor="players">Number of Players</Label>
+              <Select value={numPlayers.toString()} onValueChange={(v) => setNumPlayers(parseInt(v))}>
+                <SelectTrigger id="players" className="border-border">
+                  <SelectValue placeholder="Select Players" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 Player</SelectItem>
+                  <SelectItem value="2">2 Players</SelectItem>
+                  <SelectItem value="3">3 Players</SelectItem>
+                  <SelectItem value="4">4 Players</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           
           {games.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-white/10">

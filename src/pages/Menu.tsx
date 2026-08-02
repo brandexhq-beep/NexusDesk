@@ -24,22 +24,22 @@ export function Menu() {
     const newStock = parseInt(value, 10);
     if (isNaN(newStock) || newStock < 0) return;
     
-    await db.menu.update(id, { stock_quantity: newStock });
+    await db.menu.update(id, { stock_quantity: newStock, low_stock_notified: false });
     loadItems();
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Menu & Combos</h1>
-        <Button onClick={() => setIsAddOpen(true)}>Add Item</Button>
+        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto">Add Item</Button>
       </div>
       
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-card-foreground">All Items</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">

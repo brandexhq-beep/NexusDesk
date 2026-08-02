@@ -96,9 +96,24 @@ export const generateInvoicePDF = async (
   doc.text('Total:', 5, finalY + 8);
   doc.text(`${currencyStr} ${session.total_amount.toFixed(2)}`, 75, finalY + 8, { align: 'right' });
   
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text(`+ ${invoiceData.pointsEarned} Loyalty Pts!`, 40, finalY + 16, { align: 'center' });
+  if (invoiceData.pointsEarned > 0) {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`+ ${invoiceData.pointsEarned} Loyalty Pts!`, 40, finalY + 10, { align: 'center' });
+    
+    if (settings.loyalty_expiry_enabled) {
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(100, 100, 100);
+      doc.text(`(Expires in ${settings.loyalty_expiry_days || 30} days)`, 40, finalY + 14, { align: 'center' });
+      doc.setTextColor(0, 0, 0); // reset
+      finalY += 18;
+    } else {
+      finalY += 15;
+    }
+  } else {
+    finalY += 5;
+  }
   
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(9);

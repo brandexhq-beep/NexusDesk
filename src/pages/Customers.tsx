@@ -32,14 +32,13 @@ export function Customers() {
 
   const handleExportCSV = () => {
     if (customers.length === 0) return;
-    const headers = ['Name', 'Phone', 'Time Balance (mins)', 'Wallet Balance', 'Loyalty Points', 'Tab'];
+    const headers = ['Name', 'Phone', 'Time Balance (mins)', 'Wallet Balance', 'Loyalty Points'];
     const rows = customers.map(c => [
       c.name,
       c.phone,
       c.available_minutes,
       c.wallet_balance,
-      c.loyalty_points,
-      c.amount_owed
+      c.loyalty_points
     ]);
     const csvContent = "data:text/csv;charset=utf-8," 
       + [headers.join(','), ...rows.map(e => e.join(','))].join("\n");
@@ -54,13 +53,13 @@ export function Customers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Customers</h1>
-        <div className="flex gap-3">
-          <Button onClick={handleExportCSV} variant="outline" className="border-border gap-2">
+        <div className="flex gap-3 w-full sm:w-auto">
+          <Button onClick={handleExportCSV} variant="outline" className="flex-1 sm:flex-none border-border gap-2">
             <Download className="w-4 h-4" /> Export CSV
           </Button>
-          <Button onClick={() => setIsAddModalOpen(true)} className="bg-primary text-primary-foreground gap-2">
+          <Button onClick={() => setIsAddModalOpen(true)} className="flex-1 sm:flex-none bg-primary text-primary-foreground gap-2">
             <UserPlus className="w-4 h-4" /> Add Customer
           </Button>
         </div>
@@ -70,7 +69,7 @@ export function Customers() {
         <CardHeader>
           <CardTitle className="text-card-foreground">Customer Directory</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           {customers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No customers found.</div>
           ) : (
@@ -82,7 +81,6 @@ export function Customers() {
                   <TableHead className="text-muted-foreground text-right">Time Balance</TableHead>
                   <TableHead className="text-muted-foreground text-right">Wallet</TableHead>
                   <TableHead className="text-muted-foreground text-right">Loyalty Pts</TableHead>
-                  <TableHead className="text-muted-foreground text-right">Tab</TableHead>
                   <TableHead className="text-muted-foreground text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -102,7 +100,6 @@ export function Customers() {
                     <TableCell className="text-right text-indigo-400 font-medium">{formatMinutes(c.available_minutes)}</TableCell>
                     <TableCell className="text-right text-emerald-500 font-medium">₹ {c.wallet_balance}</TableCell>
                     <TableCell className="text-right font-medium text-amber-500">{c.loyalty_points}</TableCell>
-                    <TableCell className="text-right text-destructive font-medium">₹ {c.amount_owed}</TableCell>
                     <TableCell className="text-right">
                       <Button 
                         variant="ghost" 

@@ -23,36 +23,50 @@ export function GlobalAlerts() {
         const now = Date.now();
         const diffMs = now - Number(session.start_time);
         const diffMins = diffMs / 60000;
+        
+        const remindersSent = session.reminders_sent || [];
+        let updated = false;
 
-        // 5-minute warning logic
-        if (diffMins >= session.prepaid_duration_mins - 5 && !session.warning_sent) {
-          if (session.customer_id) {
-            const customer = await db.customers.getById(session.customer_id);
-            const station = stations.find(st => st.id === session.station_id);
-            
-            if (customer && customer.phone && station) {
-              const message = `Hi ${customer.name}, your gaming session at ${station.name} has 5 minutes left. Please visit the counter if you'd like to extend!`;
-              try {
-                await fetch('http://localhost:3001/send-invoice', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ phone: customer.phone, message })
-                });
-              } catch (e) {
-                console.error("Failed to send 5-min warning via WhatsApp", e);
+        const checkAndSend = async (thresholdMins: number, label: string, message: string) => {
+           if (diffMins >= (session.prepaid_duration_mins! - thresholdMins) && !remindersSent.includes(label)) {
+              if (session.customer_id) {
+                const customer = await db.customers.getById(session.customer_id);
+                if (customer && customer.phone) {
+                   try {
+                     await fetch('http://localhost:3001/send-invoice', {
+                       method: 'POST',
+                       headers: { 'Content-Type': 'application/json' },
+                       body: JSON.stringify({ phone: customer.phone, message })
+                     });
+                   } catch (e) {
+                     console.error(`Failed to send ${label} reminder`, e);
+                   }
+                }
               }
-            }
-          }
-          // Mark as sent whether it succeeded or if there was no customer/phone to prevent retrying
-          await db.sessions.update(session.id, { warning_sent: true });
-        }
+              remindersSent.push(label);
+              updated = true;
+           }
+        };
 
+        const station = stations.find(st => st.id === session.station_id);
+        const stName = station ? station.name : 'your station';
+
+        // Check 15m warning
+        await checkAndSend(15, '15m', `Hi! Your session at ${stName} has 15 minutes left. You can extend at the counter!`);
+        
+        // Check 5m warning
+        await checkAndSend(5, '5m', `Hi! Your session at ${stName} has only 5 minutes left.`);
+
+        // Time is up
         if (diffMins >= session.prepaid_duration_mins) {
-          // Time is up!
-          const station = stations.find(st => st.id === session.station_id);
           if (station) {
             newAlerts.push({ id: session.id, stationName: station.name });
           }
+          await checkAndSend(0, '0m', `Your session at ${stName} is now over. Thank you for playing!`);
+        }
+
+        if (updated) {
+           await db.sessions.update(session.id, { reminders_sent: remindersSent });
         }
       }
 
@@ -66,17 +80,91 @@ export function GlobalAlerts() {
 
     const checkStock = async () => {
       const menu = await db.menu.getAll();
-      const lowStock = menu.filter(m => m.active && (m.category === 'drink' || m.category === 'snack') && m.stock_quantity !== undefined && m.stock_quantity <= 5);
+      const settings = await db.settings.get();
+      const threshold = settings.low_stock_threshold || 5;
+      const lowStock = menu.filter(m => m.active && (m.category === 'drink' || m.category === 'snack') && m.stock_quantity !== undefined && m.stock_quantity <= threshold);
       setStockAlerts(lowStock);
+
+      // WhatsApp alerting
+      if (settings.owner_phone) {
+        for (const item of lowStock) {
+          if (!item.low_stock_notified) {
+            try {
+              await fetch('http://localhost:3001/send-invoice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: settings.owner_phone, message: `⚠️ Low Stock Alert:\n${item.name} is down to ${item.stock_quantity} items. Please restock soon.` })
+              });
+              await db.menu.update(item.id, { low_stock_notified: true });
+            } catch (e) {
+              console.error('Failed to send stock alert', e);
+            }
+          }
+        }
+      }
+    };
+
+    const checkLoyaltyExpiry = async () => {
+      const settings = await db.settings.get();
+      if (!settings.loyalty_expiry_enabled || !settings.loyalty_expiry_days) return;
+
+      const customers = await db.customers.getAll();
+      const now = Date.now();
+      const expiryMs = settings.loyalty_expiry_days * 24 * 60 * 60 * 1000;
+      const warningMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+      for (const customer of customers) {
+        if (customer.loyalty_points <= 0) continue;
+        
+        const lastUpdated = customer.loyalty_points_updated_at || Number(customer.created_at);
+        const expiresAt = lastUpdated + expiryMs;
+        
+        if (now >= expiresAt) {
+          // Points expired!
+          await db.customers.update(customer.id, {
+            loyalty_points: 0,
+            loyalty_points_updated_at: now,
+            loyalty_reminder_sent: false
+          });
+          console.log(`Reset loyalty points for ${customer.name} due to expiration.`);
+        } else if (now >= expiresAt - warningMs && !customer.loyalty_reminder_sent) {
+          // Less than 7 days left, and haven't sent a reminder yet
+          const daysLeft = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
+          if (customer.phone) {
+            const message = `Hi ${customer.name}, you have ${customer.loyalty_points} loyalty points expiring in ${daysLeft} days! Book a session soon to use them before they're gone.`;
+            try {
+              await fetch('http://localhost:3001/send-invoice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: customer.phone, message })
+              });
+              
+              await db.customers.update(customer.id, { loyalty_reminder_sent: true });
+              console.log(`Sent loyalty expiry reminder to ${customer.name}`);
+            } catch (e) {
+              console.error('Failed to send loyalty reminder', e);
+            }
+          }
+        }
+      }
     };
 
     checkSessions();
     checkStock();
+    checkLoyaltyExpiry();
+
     const interval = setInterval(() => {
       checkSessions();
       checkStock();
     }, 5000);
-    return () => clearInterval(interval);
+    
+    // Check loyalty expiry less frequently (every 1 minute)
+    const loyaltyInterval = setInterval(checkLoyaltyExpiry, 60000);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(loyaltyInterval);
+    };
   }, [alerts.length]);
 
   const playSound = async () => {
