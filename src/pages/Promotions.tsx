@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trash2, Send, Clock, Plus, Users, Calendar } from 'lucide-react';
+import { Trash2, Send, Plus, Users } from 'lucide-react';
 import type { MessageTemplate, Customer } from '../types';
 import { toast } from 'sonner';
 

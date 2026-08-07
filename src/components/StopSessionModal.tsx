@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -28,7 +28,6 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   const [minutesUsed, setMinutesUsed] = useState<number>(0);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [sendInvoice, setSendInvoice] = useState(false);
-  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     db.settings.get().then(s => {

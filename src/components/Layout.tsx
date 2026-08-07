@@ -1,6 +1,6 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Gamepad2, Users, Monitor, LogOut, Coffee, Menu as MenuIcon, LineChart, Settings as Cog, Disc, Megaphone, BarChart3, Receipt } from 'lucide-react';
+import { Gamepad2, Users, Monitor, LogOut, Coffee, Menu as MenuIcon, Settings as Cog, Disc, Megaphone, BarChart3, Receipt } from 'lucide-react';
 import { GlobalAlerts } from './GlobalAlerts';
 import { ReviewQueue } from './ReviewQueue';
 import { WhatsAppStatus } from './WhatsAppStatus';

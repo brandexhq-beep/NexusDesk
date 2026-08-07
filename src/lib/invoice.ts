@@ -86,7 +86,7 @@ export const generateInvoicePDF = async (
     columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 10, halign: 'center' }, 2: { halign: 'right' } }
   });
   
-  const finalY = (doc as any).lastAutoTable.finalY || 50;
+  let finalY = (doc as any).lastAutoTable.finalY || 50;
   
   doc.setLineWidth(0.5);
   doc.line(5, finalY + 2, 75, finalY + 2);
