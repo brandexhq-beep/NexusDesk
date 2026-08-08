@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { db, whatsapp } from '../services/db';
 import { MessageCircle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 interface QueueItem {
@@ -15,12 +16,12 @@ export function WhatsAppStatus() {
     const fetchStatus = async () => {
       try {
         const [queueRes, statusRes] = await Promise.all([
-          fetch('http://localhost:3001/whatsapp-queue'),
-          fetch('http://localhost:3001/whatsapp-status')
+          db.whatsappQueue.getAll(),
+          whatsapp.getStatus()
         ]);
         
-        if (queueRes.ok) setQueue(await queueRes.json());
-        if (statusRes.ok) setStatus(await statusRes.json());
+        setQueue(queueRes || []);
+        setStatus(statusRes || { ready: false, qr: null });
       } catch (err) {
         // Server might be down, ignore silently or show error
       }
@@ -51,9 +52,9 @@ export function WhatsAppStatus() {
           <AlertCircle className="w-4 h-4" />
           <span>WhatsApp Not Linked</span>
         </div>
-        <a href="http://localhost:3001/whatsapp-status" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
-          View QR Code (Local Server)
-        </a>
+        <p className="text-xs text-muted-foreground">
+          Waiting for QR scan...
+        </p>
       </div>
     );
   }

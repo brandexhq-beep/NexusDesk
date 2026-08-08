@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { db } from '../services/db';
+
+// @ts-ignore
+const api = window.api;
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -15,27 +17,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const authStatus = localStorage.getItem('brandex_auth');
-    if (authStatus === 'true') {
-      setIsAuthenticated(true);
-    }
-    setLoading(false);
+    const checkAuth = async () => {
+      const isAuth = await api.auth.check();
+      setIsAuthenticated(isAuth);
+      setLoading(false);
+    };
+    checkAuth();
   }, []);
 
   const login = async (password: string) => {
-    const settings = await db.settings.get();
-    const correctPassword = settings.admin_password || 'admin';
-    if (password === correctPassword) {
+    const success = await api.auth.login(password);
+    if (success) {
       setIsAuthenticated(true);
-      localStorage.setItem('brandex_auth', 'true');
-      return true;
     }
-    return false;
+    return success;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await api.auth.logout();
     setIsAuthenticated(false);
-    localStorage.removeItem('brandex_auth');
   };
 
   return (

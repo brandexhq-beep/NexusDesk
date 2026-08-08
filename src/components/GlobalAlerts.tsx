@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db } from '../services/db';
+import { db, whatsapp } from '../services/db';
 import type { MenuItem } from '../types';
 
 import { AlertTriangle, X, Package } from 'lucide-react';
@@ -33,11 +33,7 @@ export function GlobalAlerts() {
                 const customer = await db.customers.getById(session.customer_id);
                 if (customer && customer.phone) {
                    try {
-                     await fetch('http://localhost:3001/send-invoice', {
-                       method: 'POST',
-                       headers: { 'Content-Type': 'application/json' },
-                       body: JSON.stringify({ phone: customer.phone, message })
-                     });
+                     await whatsapp.sendInvoice({ phone: customer.phone, message });
                    } catch (e) {
                      console.error(`Failed to send ${label} reminder`, e);
                    }
@@ -90,11 +86,7 @@ export function GlobalAlerts() {
         for (const item of lowStock) {
           if (!item.low_stock_notified) {
             try {
-              await fetch('http://localhost:3001/send-invoice', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: settings.owner_phone, message: `⚠️ Low Stock Alert:\n${item.name} is down to ${item.stock_quantity} items. Please restock soon.` })
-              });
+              await whatsapp.sendInvoice({ phone: settings.owner_phone, message: `Low Stock Alert: ${item.name} has only ${item.stock_quantity} left.` });
               await db.menu.update(item.id, { low_stock_notified: true });
             } catch (e) {
               console.error('Failed to send stock alert', e);
@@ -133,11 +125,7 @@ export function GlobalAlerts() {
           if (customer.phone) {
             const message = `Hi ${customer.name}, you have ${customer.loyalty_points} loyalty points expiring in ${daysLeft} days! Book a session soon to use them before they're gone.`;
             try {
-              await fetch('http://localhost:3001/send-invoice', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: customer.phone, message })
-              });
+              await whatsapp.sendInvoice({ phone: customer.phone, message });
               
               await db.customers.update(customer.id, { loyalty_reminder_sent: true });
               console.log(`Sent loyalty expiry reminder to ${customer.name}`);

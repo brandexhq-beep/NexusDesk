@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db } from '../services/db';
+import { db, whatsapp } from '../services/db';
 import type { Station, Session, PricingRule, Customer } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -69,6 +69,7 @@ export function Dashboard() {
               key={station.id} 
               station={station} 
               rules={rules}
+              now={currentTime.getTime()}
               onStartClick={() => setStartModalStation(station)} 
               onStopClick={(session) => setStopModalSession({station, session})}
               onAddFoodClick={(session) => setFoodModalSession(session)}
@@ -100,7 +101,7 @@ export function Dashboard() {
   );
 }
 
-function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick }: { station: Station, rules: PricingRule[], onStartClick: () => void, onStopClick: (session: Session) => void, onAddFoodClick: (session: Session) => void }) {
+function StationCard({ station, rules, now, onStartClick, onStopClick, onAddFoodClick }: { station: Station, rules: PricingRule[], now: number, onStartClick: () => void, onStopClick: (session: Session) => void, onAddFoodClick: (session: Session) => void }) {
   const isOccupied = station.status === 'occupied';
   const isMaintenance = station.status === 'maintenance';
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -131,54 +132,47 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
   useEffect(() => {
     if (!activeSession) return;
     
-    const calculateCost = () => {
-      const now = Date.now();
-      const diffMs = now - Number(activeSession.start_time);
-      
-      // Elapsed format
-      const hrs = Math.floor(diffMs / (1000 * 60 * 60));
-      const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
-      setElapsed(`${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+    const diffMs = now - Number(activeSession.start_time);
+    
+    // Elapsed format
+    const hrs = Math.floor(diffMs / (1000 * 60 * 60));
+    const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
+    setElapsed(`${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
 
-      // Basic Cost calc (with combo overlay or dynamic pricing)
-      let tempCost = 0;
-      if (activeSession.combo_id) {
-        tempCost = activeSession.base_amount || 0; 
+    // Basic Cost calc
+    let tempCost = 0;
+    if (activeSession.combo_id) {
+      tempCost = activeSession.base_amount || 0; 
+    } else {
+      const customerFreeMins = customer ? customer.available_minutes : 0;
+      const totalFreeMins = (activeSession.prepaid_duration_mins || 0) + customerFreeMins;
+      const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, totalFreeMins, activeSession.num_players);
+      tempCost = (activeSession.base_amount || 0) + res.cost;
+    }
+    
+    const extMins = activeSession.extended_minutes || 0;
+    if (extMins > 0) {
+      tempCost += (extMins / 60) * station.hourly_rate;
+    }
+    
+    const foodTotal = activeSession.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0);
+    setCurrentCost(tempCost + foodTotal);
+
+    // Determine if currently in happy hour
+    const date = new Date(now);
+    const dayOfWeek = date.getDay();
+    const timeString = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    const activeRule = rules.find(rule => {
+      if (!rule.active || !rule.days.includes(dayOfWeek)) return false;
+      if (rule.start_time <= rule.end_time) {
+        return timeString >= rule.start_time && timeString < rule.end_time;
       } else {
-        const customerFreeMins = customer ? customer.available_minutes : 0;
-        const totalFreeMins = (activeSession.prepaid_duration_mins || 0) + customerFreeMins;
-        const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, totalFreeMins, activeSession.num_players);
-        tempCost = (activeSession.base_amount || 0) + res.cost;
+        return timeString >= rule.start_time || timeString < rule.end_time;
       }
-      
-      const extMins = activeSession.extended_minutes || 0;
-      if (extMins > 0) {
-        tempCost += (extMins / 60) * station.hourly_rate;
-      }
-      
-      const foodTotal = activeSession.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0);
-      setCurrentCost(tempCost + foodTotal);
-
-      // Determine if currently in happy hour
-      const date = new Date(now);
-      const dayOfWeek = date.getDay();
-      const timeString = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-      const activeRule = rules.find(rule => {
-        if (!rule.active || !rule.days.includes(dayOfWeek)) return false;
-        if (rule.start_time <= rule.end_time) {
-          return timeString >= rule.start_time && timeString < rule.end_time;
-        } else {
-          return timeString >= rule.start_time || timeString < rule.end_time;
-        }
-      });
-      setIsHappyHour(!!activeRule);
-    };
-
-    calculateCost();
-    const timer = setInterval(calculateCost, 1000);
-    return () => clearInterval(timer);
-  }, [activeSession, station, rules, customer]);
+    });
+    setIsHappyHour(!!activeRule);
+  }, [activeSession, station, rules, customer, now]);
 
   const handleExtend = async (mins: number) => {
     if (!activeSession) return;
@@ -191,11 +185,7 @@ function StationCard({ station, rules, onStartClick, onStopClick, onAddFoodClick
     if (!activeSession || !customer?.phone) return;
     try {
       const message = `Hi! Just a manual reminder regarding your gaming session at ${station.name}.`;
-      await fetch('http://localhost:3001/send-invoice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: customer.phone, message })
-      });
+      await whatsapp.sendInvoice({ phone: customer.phone, message });
       // Optionally update db or toast
     } catch (e) {
       console.error(e);

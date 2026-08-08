@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db } from '../services/db';
+import { db, whatsapp } from '../services/db';
 import type { AppSettings } from '../types';
 import { AlertCircle } from 'lucide-react';
 
@@ -52,14 +52,7 @@ export function ReviewQueue() {
           const cafeName = settings.cafe_name || "us";
           const message = `Hi ${customer.name},\n\nHope you enjoyed your session at ${cafeName} today!\n\nIf you have a moment, we would love to hear your feedback. Please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
 
-          const response = await fetch('http://localhost:3001/send-invoice', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phone: customer.phone,
-              message
-            })
-          });
+          const response = await whatsapp.sendInvoice({ phone: customer.phone, message });
 
           if (response.ok) {
             await db.reviewRequests.markSent(req.id);

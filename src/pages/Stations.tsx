@@ -4,13 +4,15 @@ import type { Station } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EditStationModal } from '../components/EditStationModal';
 import { AddStationModal } from '../components/AddStationModal';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 export function Stations() {
   const [stations, setStations] = useState<Station[]>([]);
   const [editingStation, setEditingStation] = useState<Station | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [stationToDelete, setStationToDelete] = useState<Station | null>(null);
 
   const loadStations = () => {
     db.stations.getAll().then(setStations);
@@ -24,6 +26,14 @@ export function Stations() {
     const newStatus = station.status === 'maintenance' ? 'free' : 'maintenance';
     await db.stations.update(station.id, { status: newStatus });
     loadStations();
+  };
+
+  const handleDelete = async () => {
+    if (stationToDelete) {
+      await db.stations.delete(stationToDelete.id);
+      setStationToDelete(null);
+      loadStations();
+    }
   };
 
   return (
@@ -63,13 +73,20 @@ export function Stations() {
                     <CardTitle className="text-xl font-bold tracking-tight">{s.name}</CardTitle>
                     <p className="text-sm text-muted-foreground uppercase tracking-widest mt-1">{s.type}</p>
                   </div>
-                  <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-widest ${
-                    isFree ? 'bg-cyan-500/10 text-cyan-400' :
-                    isOccupied ? 'bg-fuchsia-500/10 text-fuchsia-400 animate-pulse' :
-                    'bg-slate-500/20 text-slate-400'
-                  }`}>
-                    {s.status}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-widest ${
+                      isFree ? 'bg-cyan-500/10 text-cyan-400' :
+                      isOccupied ? 'bg-fuchsia-500/10 text-fuchsia-400 animate-pulse' :
+                      'bg-slate-500/20 text-slate-400'
+                    }`}>
+                      {s.status}
+                    </span>
+                    {isFree && (
+                      <button onClick={() => setStationToDelete(s)} className="text-red-400 hover:text-red-300 opacity-50 hover:opacity-100 transition-opacity">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               
@@ -102,6 +119,14 @@ export function Stations() {
         isOpen={isAddModalOpen} 
         onClose={() => setIsAddModalOpen(false)} 
         onAdd={loadStations} 
+      />
+      <ConfirmModal
+        open={!!stationToDelete}
+        onClose={() => setStationToDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Station"
+        description={`Are you sure you want to delete ${stationToDelete?.name}? This action cannot be undone.`}
+        confirmText="Delete Station"
       />
     </div>
   );

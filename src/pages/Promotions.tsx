@@ -33,11 +33,8 @@ export function Promotions() {
 
   const loadJobs = async () => {
     try {
-      const res = await fetch('http://localhost:3001/promotions');
-      if (res.ok) {
-        const data = await res.json();
-        setJobs(data);
-      }
+      const data = await db.whatsappPromotions.getAll();
+      setJobs(data);
     } catch (e) {
       console.error('Failed to load jobs');
     }
@@ -89,34 +86,29 @@ export function Promotions() {
     const scheduledAt = Date.now() + (Number(campaign.scheduleMins) * 60000);
 
     try {
-      const res = await fetch('http://localhost:3001/promotions/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: campaign.name,
-          message: template.content,
-          scheduledAt,
-          recipients: phones,
-          imageBase64: campaign.imageBase64 || null
-        })
+      await db.whatsappPromotions.add({
+        id: crypto.randomUUID(),
+        name: campaign.name,
+        message: template.content,
+        scheduledAt,
+        recipients: phones,
+        imageBase64: campaign.imageBase64 || null,
+        status: 'scheduled'
       });
-      if (res.ok) {
-        toast.success(`Campaign scheduled for ${phones.length} customers!`);
-        setCampaign({ name: '', templateId: '', scheduleMins: '0', imageBase64: '' });
-        const fileInput = document.getElementById('promo-image') as HTMLInputElement;
-        if (fileInput) fileInput.value = '';
-        loadJobs();
-      } else {
-        toast.error('Failed to schedule campaign');
-      }
+      
+      toast.success(`Campaign scheduled for ${phones.length} customers!`);
+      setCampaign({ name: '', templateId: '', scheduleMins: '0', imageBase64: '' });
+      const fileInput = document.getElementById('promo-image') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+      loadJobs();
     } catch (e) {
-      toast.error('Server error connecting to WhatsApp server');
+      toast.error('Failed to schedule campaign');
     }
   };
 
   const handleDeleteJob = async (id: string) => {
     try {
-      await fetch(`http://localhost:3001/promotions/${id}`, { method: 'DELETE' });
+      await db.whatsappPromotions.delete(id);
       toast.success('Job deleted');
       loadJobs();
     } catch (e) {
@@ -131,10 +123,12 @@ export function Promotions() {
     useEffect(() => {
       const fetchProgress = async () => {
         try {
-          const res = await fetch(`http://localhost:3001/promotions/progress/${jobId}`);
-          if (res.ok) {
-            const data = await res.json();
-            setProgress(data);
+          const queue = await db.whatsappQueue.getAll();
+          const jobItems = queue.filter((q: any) => q.campaignId === jobId);
+          if (jobItems.length > 0) {
+            const sent = jobItems.filter((q: any) => q.status === 'sent').length;
+            const failed = jobItems.filter((q: any) => q.status === 'failed').length;
+            setProgress({ total: initialTotal, sent, failed });
           }
         } catch(e) {}
       };

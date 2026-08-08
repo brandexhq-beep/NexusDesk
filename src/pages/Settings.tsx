@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { db } from '../services/db';
+import { db, whatsapp } from '../services/db';
 import type { AppSettings, PricingRule } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,16 +78,12 @@ export function Settings() {
   const startWhatsAppPolling = () => {
     const fetchWaStatus = async () => {
       try {
-        const res = await fetch('http://localhost:3001/whatsapp-status');
-        const json = await res.json();
-        setWaStatus(json);
+        const json = await whatsapp.getStatus();
+        setWaStatus(json || { ready: false, qr: null });
         
         try {
-          const queueRes = await fetch('http://localhost:3001/whatsapp-queue');
-          if (queueRes.ok) {
-            const queueJson = await queueRes.json();
-            setWaQueue(queueJson);
-          }
+          const queueJson = await db.whatsappQueue.getAll();
+          setWaQueue(queueJson || []);
         } catch (eq) {
           // Ignore queue fetch error silently
         }
@@ -109,7 +105,7 @@ export function Settings() {
   const handleClearQueue = async () => {
     if (!window.confirm('Are you sure you want to clear the entire WhatsApp queue? This will drop all pending messages.')) return;
     try {
-      await fetch('http://localhost:3001/whatsapp-queue/clear', { method: 'POST' });
+      await db.whatsappQueue.clear();
       setWaQueue([]);
     } catch (e) {
       console.error(e);
@@ -118,7 +114,7 @@ export function Settings() {
 
   const handleDeleteQueueItem = async (id: string) => {
     try {
-      await fetch(`http://localhost:3001/whatsapp-queue/${id}`, { method: 'DELETE' });
+      await db.whatsappQueue.delete(id);
       setWaQueue(prev => prev.filter(item => item.id !== id));
     } catch (e) {
       console.error(e);

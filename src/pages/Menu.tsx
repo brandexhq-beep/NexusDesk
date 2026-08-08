@@ -6,10 +6,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AddMenuItemModal } from '../components/AddMenuItemModal';
+import { ConfirmModal } from '../components/ConfirmModal';
+import { Trash2 } from 'lucide-react';
 
 export function Menu() {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
 
   useEffect(() => {
     loadItems();
@@ -26,6 +29,14 @@ export function Menu() {
     
     await db.menu.update(id, { stock_quantity: newStock, low_stock_notified: false });
     loadItems();
+  };
+
+  const handleDelete = async () => {
+    if (itemToDelete) {
+      await db.menu.delete(itemToDelete.id);
+      setItemToDelete(null);
+      loadItems();
+    }
   };
 
   return (
@@ -48,6 +59,7 @@ export function Menu() {
                 <TableHead className="text-muted-foreground text-right">Price</TableHead>
                 <TableHead className="text-muted-foreground">Stock</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
+                <TableHead className="text-muted-foreground text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -80,6 +92,11 @@ export function Menu() {
                       {item.active ? 'Active' : 'Inactive'}
                     </span>
                   </TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" onClick={() => setItemToDelete(item)} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -91,6 +108,15 @@ export function Menu() {
         open={isAddOpen} 
         onClose={() => setIsAddOpen(false)} 
         onAdd={loadItems} 
+      />
+
+      <ConfirmModal
+        open={!!itemToDelete}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Item"
+        description={`Are you sure you want to delete ${itemToDelete?.name}? This action cannot be undone.`}
+        confirmText="Delete Item"
       />
     </div>
   );

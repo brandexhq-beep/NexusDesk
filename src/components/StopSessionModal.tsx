@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { db } from '../services/db';
+import { db, whatsapp } from '../services/db';
 import type { Station, Session, Customer, PricingRule, AppSettings } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
 import { generateInvoicePDF } from '../lib/invoice';
@@ -206,15 +206,11 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
               const cafeName = settings.cafe_name || "us";
               const message = `Hi ${customer.name},\n\nThank you for choosing ${cafeName}! Attached is your invoice for today's session.\n\nIf you have a moment, please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
 
-              fetch('http://localhost:3001/send-invoice', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  phone: customer.phone,
-                  message,
-                  pdfBase64: base64data,
-                  pdfName: `Invoice_${customer.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`
-                })
+              whatsapp.sendInvoice({
+                phone: customer.phone,
+                message,
+                pdfBase64: base64data,
+                pdfName: `Invoice_${customer.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`
               }).catch(console.error); // Fire and forget so we don't block closing
             };
           } catch (pdfErr) {

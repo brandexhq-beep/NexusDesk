@@ -3,28 +3,15 @@ const path = require('path');
 const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
 const { fork } = require('child_process');
+const { setupIpcHandlers } = require('./database.cjs');
 
 let mainWindow;
 let whatsappServerProcess;
 
-function startWhatsAppServer() {
-  const packagedPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'whatsapp-server.cjs');
-  const asarPath = path.join(__dirname, '..', 'whatsapp-server.cjs');
-  const rootPath = path.join(process.resourcesPath, 'whatsapp-server.cjs');
-  
-  const fs = require('fs');
-  let finalPath = asarPath;
-  if (fs.existsSync(rootPath)) {
-    finalPath = rootPath;
-  } else if (fs.existsSync(packagedPath)) {
-    finalPath = packagedPath;
-  }
+const { startWhatsAppClient } = require('./whatsapp.cjs');
 
-  try {
-    whatsappServerProcess = fork(finalPath, [], { stdio: 'inherit' });
-  } catch (err) {
-    console.error('Failed to fork WhatsApp server process:', err);
-  }
+function startWhatsAppServer() {
+  startWhatsAppClient(ipcMain);
 }
 
 function createWindow() {
@@ -33,9 +20,10 @@ function createWindow() {
     height: 800,
     autoHideMenuBar: true, // Hides the File/Edit/View menu bar
     webPreferences: {
-      nodeIntegration: true, 
-      contextIsolation: false,
-      webSecurity: false 
+      nodeIntegration: false, 
+      contextIsolation: true,
+      webSecurity: true,
+      preload: path.join(__dirname, 'preload.cjs')
     },
     title: 'Gaming Cafe Management',
   });
@@ -46,7 +34,7 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
@@ -95,6 +83,7 @@ ipcMain.handle('open-restore-dialog', async (event) => {
 });
 
 app.on('ready', () => {
+  setupIpcHandlers();
   startWhatsAppServer();
   createWindow();
 });
@@ -106,9 +95,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  if (whatsappServerProcess) {
-    whatsappServerProcess.kill();
-  }
+  // Graceful exit for whatsapp is handled automatically by puppeteer unmounting, 
+  // but could add custom teardown here.
 });
 
 app.on('activate', () => {

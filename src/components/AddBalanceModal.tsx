@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { db } from '../services/db';
+import { db, whatsapp } from '../services/db';
 import type { Customer } from '../types';
 
 interface AddBalanceModalProps {
@@ -60,19 +60,7 @@ export function AddBalanceModal({ customer, onClose, onAdd }: AddBalanceModalPro
         // Send Invoice for Time Purchase
         if (customer.phone) {
           try {
-            await fetch('http://localhost:3001/send-invoice', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                phone: customer.phone,
-                customerName: customer.name,
-                items: [{ name: `Time Added (${totalMins} mins)`, quantity: 1, price: paid }],
-                total: paid,
-                subtotal: paid,
-                discount: 0,
-                type: 'receipt'
-              })
-            });
+            await whatsapp.sendInvoice({ phone: customer.phone, message: `Hi ${customer.name}, your account has been credited with ${totalMins} minutes.` });
           } catch (e) {
             console.error("WhatsApp invoice error:", e);
           }
@@ -119,19 +107,7 @@ export function AddBalanceModal({ customer, onClose, onAdd }: AddBalanceModalPro
         // Send Invoice for Wallet Top-up
         if (customer.phone) {
           try {
-            await fetch('http://localhost:3001/send-invoice', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                phone: customer.phone,
-                customerName: customer.name,
-                items: [{ name: `Wallet Top-up`, quantity: 1, price: amt }],
-                total: amt,
-                subtotal: amt,
-                discount: 0,
-                type: 'receipt'
-              })
-            });
+            await whatsapp.sendInvoice({ phone: customer.phone, message: `Hi ${customer.name}, your wallet has been credited with ₹${amt}.` });
           } catch (e) {
             console.error("WhatsApp invoice error:", e);
           }
