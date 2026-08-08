@@ -58,14 +58,8 @@ Runs the Vite development web app on `http://localhost:5173`.
 npm run dev
 ```
 
-#### 2. Start Standalone WhatsApp Invoicing Server
-Runs the local Express + WhatsApp Web server on `http://localhost:3001`. On first run, it generates a QR code in the terminal to pair your WhatsApp device.
-```bash
-npm run whatsapp
-```
-
-#### 3. Start Desktop Application (Electron Dev Mode)
-Launches the Web App inside Electron along with the background WhatsApp server concurrently.
+#### 2. Start Desktop Application (Electron Dev Mode)
+Launches the Web App inside Electron along with the integrated background WhatsApp service concurrently.
 ```bash
 npm run electron:dev
 ```
@@ -91,20 +85,21 @@ npm run electron:build
 ```
 
 ### Build Artifacts Output
-After the build process completes, the output installer will be saved in the `release/` directory:
-- **Installer**: `release/Gaming Cafe Management Setup 0.0.0.exe`
-- **Unpacked App**: `release/win-unpacked/`
+After the build process completes, the output installer will be saved in the `build-dist/` directory:
+- **Installer**: `build-dist/Gaming Cafe Management Setup 1.0.1.exe`
+- **Unpacked App**: `build-dist/win-unpacked/`
 
-When launched from the installer, the desktop executable automatically spawns the background WhatsApp service (`whatsapp-server.cjs`).
+When launched from the installer, the desktop executable automatically spawns the background SQLite database and WhatsApp service natively.
 
 ---
 
 ## 📱 WhatsApp Integration Setup
 
-1. Launch either the Electron app or run `npm run whatsapp` in a terminal window.
-2. Open WhatsApp on your mobile phone -> **Linked Devices** -> **Link a Device**.
-3. Scan the QR code rendered in the terminal window.
-4. Once authenticated, checkout receipts and Google Review links will automatically be sent to customer phone numbers via WhatsApp.
+1. Launch the Electron app (`npm run electron:dev` or from the installed `.exe`).
+2. Navigate to the **Settings** tab -> **WhatsApp** tab inside the app.
+3. Open WhatsApp on your mobile phone -> **Linked Devices** -> **Link a Device**.
+4. Scan the QR code rendered in the Settings page.
+5. Once authenticated, checkout receipts, Google Review links, and manual messages will automatically be sent to customer phone numbers via WhatsApp.
 
 ---
 
