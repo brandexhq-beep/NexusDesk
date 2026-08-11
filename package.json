@@ -1,7 +1,7 @@
 {
   "name": "gaming-cafe-management",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Gaming Cafe Management System",
   "author": "Brandex",
   "type": "module",
