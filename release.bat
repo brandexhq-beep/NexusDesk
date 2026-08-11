@@ -13,7 +13,7 @@ if "%ver%"=="" set ver=patch
 
 echo.
 echo [1/4] Bumping version to %ver% and creating commit...
-call npm version %ver%
+call npm version %ver% --force
 
 if %errorlevel% neq 0 (
     echo Error bumping version. Make sure your working directory is clean.
