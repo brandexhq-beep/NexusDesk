@@ -1,7 +1,7 @@
 {
   "name": "gaming-cafe-management",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Gaming Cafe Management System",
   "author": "Brandex",
   "type": "module",
@@ -33,8 +33,8 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "brandex",
-      "repo": "gaming-cafe-releases"
+      "owner": "brandexhq-beep",
+      "repo": "NexusDesk"
     },
     "files": [
       "dist/**/*",
