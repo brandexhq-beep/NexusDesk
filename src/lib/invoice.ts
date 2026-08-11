@@ -11,6 +11,7 @@ export interface InvoiceData {
   loyaltyDiscount: number;
   specialDiscount: number;
   customDiscount: number;
+  gameMinutes?: number;
 }
 
 export const generateInvoicePDF = async (
@@ -50,14 +51,9 @@ export const generateInvoicePDF = async (
   // Itemize bill
   const tableData: string[][] = [];
   
-  // Base cost
+  // Base cost (includes extended time and dynamic pricing, calculated in StopSessionModal)
   if (session.base_amount > 0) {
-    tableData.push(['Gaming Time', '1', `${currencyStr} ${session.base_amount.toFixed(2)}`]);
-  }
-  
-  if (session.extended_minutes && session.extended_minutes > 0) {
-    const extCost = (session.extended_minutes / 60) * station.hourly_rate;
-    tableData.push([`Extended Time (${session.extended_minutes} mins)`, '1', `${currencyStr} ${extCost.toFixed(2)}`]);
+    tableData.push([`Gaming Time (${invoiceData.gameMinutes || '?'} mins)`, '1', `${currencyStr} ${session.base_amount.toFixed(2)}`]);
   }
   
   // Food orders
@@ -96,23 +92,23 @@ export const generateInvoicePDF = async (
   doc.text('Total:', 5, finalY + 8);
   doc.text(`${currencyStr} ${session.total_amount.toFixed(2)}`, 75, finalY + 8, { align: 'right' });
   
-  if (invoiceData.pointsEarned > 0) {
+  if (invoiceData.pointsEarned > 0 && settings.loyalty_enabled !== false) {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(`+ ${invoiceData.pointsEarned} Loyalty Pts!`, 40, finalY + 10, { align: 'center' });
+    doc.text(`+ ${invoiceData.pointsEarned} Loyalty Pts!`, 40, finalY + 16, { align: 'center' });
     
     if (settings.loyalty_expiry_enabled) {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'italic');
       doc.setTextColor(100, 100, 100);
-      doc.text(`(Expires in ${settings.loyalty_expiry_days || 30} days)`, 40, finalY + 14, { align: 'center' });
+      doc.text(`(Expires in ${settings.loyalty_expiry_days || 30} days)`, 40, finalY + 20, { align: 'center' });
       doc.setTextColor(0, 0, 0); // reset
-      finalY += 18;
+      finalY += 24;
     } else {
-      finalY += 15;
+      finalY += 20;
     }
   } else {
-    finalY += 5;
+    finalY += 10;
   }
   
   doc.setFont('helvetica', 'italic');

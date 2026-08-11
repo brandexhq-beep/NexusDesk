@@ -1,106 +1,140 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
 const { autoUpdater } = require('electron-updater');
-const { fork } = require('child_process');
 const { setupIpcHandlers } = require('./database.cjs');
-
-let mainWindow;
-let whatsappServerProcess;
-
 const { startWhatsAppClient } = require('./whatsapp.cjs');
 
-function startWhatsAppServer() {
-  startWhatsAppClient(ipcMain);
-}
+let mainWindow;
 
+// ─── Global Error Guards ─────────────────────────────────────────────────────
+// Prevent WhatsApp / Puppeteer errors from crashing the entire Electron process.
+process.on('unhandledRejection', (reason) => {
+  const msg = reason ? reason.toString() : '';
+  if (msg.includes('EBUSY') || msg.includes('Protocol error') || msg.includes('Target closed')) {
+    console.warn('[WhatsApp] Non-fatal rejection suppressed:', msg.slice(0, 200));
+  } else {
+    console.error('[App] Unhandled Rejection:', reason);
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  const msg = err && err.message ? err.message : String(err);
+  if (msg.includes('EBUSY') || msg.includes('Protocol error') || msg.includes('Target closed')) {
+    console.warn('[WhatsApp] Non-fatal exception suppressed:', msg.slice(0, 200));
+  } else {
+    console.error('[App] Uncaught Exception:', err);
+    // Only exit for truly unexpected errors, not WhatsApp ones
+    // process.exit(1);  // commented so UI stays alive
+  }
+});
+
+// ─── Window ──────────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    autoHideMenuBar: true, // Hides the File/Edit/View menu bar
+    autoHideMenuBar: true,
     webPreferences: {
-      nodeIntegration: false, 
+      nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
-      preload: path.join(__dirname, 'preload.cjs')
+      preload: path.join(__dirname, 'preload.cjs'),
     },
-    title: 'Gaming Cafe Management',
+    title: 'Sara Gaming Zone',
   });
 
   mainWindow.maximize();
 
   const isDev = !app.isPackaged && process.env.NODE_ENV === 'development';
-
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
-    // mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
-  }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// Handle Auto-Updater Events
-autoUpdater.on('update-available', () => {
-  if (mainWindow) {
-    mainWindow.webContents.send('update_available');
-  }
-});
+// ─── Auto Updater ────────────────────────────────────────────────────────────
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.requestHeaders = { "Authorization": `bearer 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` };
 
-autoUpdater.on('update-downloaded', () => {
-  if (mainWindow) {
-    mainWindow.webContents.send('update_downloaded');
-  }
-  // Optional: prompt user before restarting
-  // autoUpdater.quitAndInstall();
-});
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[Updater] Checking for update...');
+  });
 
-// Backup and Restore IPC handlers
+  autoUpdater.on('update-available', (info) => {
+    console.log('[Updater] Update available:', info.version);
+    if (mainWindow) mainWindow.webContents.send('update_available', info);
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[Updater] Already up to date:', info.version);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    console.log(`[Updater] Download: ${Math.round(progressObj.percent)}%`);
+    if (mainWindow) mainWindow.webContents.send('update_progress', progressObj);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[Updater] Update downloaded, ready to install:', info.version);
+    if (mainWindow) mainWindow.webContents.send('update_downloaded', info);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[Updater] Error:', err.message);
+  });
+
+  // IPC: check for updates on demand
+  ipcMain.handle('updater:checkNow', async () => {
+    try { await autoUpdater.checkForUpdates(); } catch (e) { console.error('[Updater] Check failed:', e.message); }
+  });
+
+  // IPC: install now (quit & install)
+  ipcMain.handle('updater:installNow', () => {
+    autoUpdater.quitAndInstall(false, true);
+  });
+
+  // Only check in packaged builds
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch((e) => {
+      console.warn('[Updater] Initial check failed:', e.message);
+    });
+  }
+}
+
+// ─── Backup / Restore Dialogs ────────────────────────────────────────────────
 ipcMain.handle('save-backup-dialog', async (event, defaultFilename) => {
-  const result = await dialog.showSaveDialog(mainWindow, {
+  return dialog.showSaveDialog(mainWindow, {
     title: 'Save Backup',
     defaultPath: defaultFilename,
-    filters: [{ name: 'JSON Data', extensions: ['json'] }]
+    filters: [{ name: 'JSON Data', extensions: ['json'] }],
   });
-  return result;
 });
 
-ipcMain.handle('open-restore-dialog', async (event) => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle('open-restore-dialog', async () => {
+  return dialog.showOpenDialog(mainWindow, {
     title: 'Select Backup File',
     properties: ['openFile'],
-    filters: [{ name: 'JSON Data', extensions: ['json'] }]
+    filters: [{ name: 'JSON Data', extensions: ['json'] }],
   });
-  return result;
 });
 
+// ─── App Lifecycle ────────────────────────────────────────────────────────────
 app.on('ready', () => {
   setupIpcHandlers();
-  startWhatsAppServer();
+  startWhatsAppClient(ipcMain);
   createWindow();
+  setupAutoUpdater();
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('before-quit', () => {
-  // Graceful exit for whatsapp is handled automatically by puppeteer unmounting, 
-  // but could add custom teardown here.
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
+  if (mainWindow === null) createWindow();
 });

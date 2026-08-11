@@ -5,6 +5,8 @@ export interface Game {
   name: string;
   total_copies: number;
   active: boolean;
+  category?: string;
+  seed_id?: string;
 }
 
 export interface ReviewRequest {
@@ -93,6 +95,9 @@ export interface MenuItem {
   package_minutes?: number; // Only used for 'package' category
   stock_quantity?: number; // Inventory tracking for snack/drink
   low_stock_notified?: boolean;
+  player_count?: number; // Optional for packages
+  subcategory?: string; // e.g. "PS5 GAMING", "VR GAMING"
+  seed_id?: string;
 }
 
 export type TransactionType = 'session_payment' | 'food_order' | 'wallet_topup' | 'wallet_deduction' | 'session_charge' | 'food_charge' | 'points_redeemed' | 'points_earned' | 'tab_settled';
@@ -122,6 +127,7 @@ export interface AppSettings {
   cafe_name: string;
   cafe_logo_url?: string;
   currency_symbol: string;
+  loyalty_enabled?: boolean;
   loyalty_conversion_rate: number; // e.g. 10 means 10 points = 1 currency unit
   loyalty_expiry_enabled?: boolean;
   loyalty_expiry_days?: number;

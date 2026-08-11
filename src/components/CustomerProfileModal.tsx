@@ -41,8 +41,13 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
   const totalSpend = sessions.reduce((acc, curr) => acc + (curr.total_amount || 0), 0);
   const lastVisit = sessions.length > 0 ? new Date(sessions[0].start_time).toLocaleDateString() : 'Never';
 
-  const getStationName = (id: string) => {
-    return stations.find(s => s.id === id)?.name || 'Unknown';
+  const getStationName = (s: Session) => {
+    if ((s as any).station_name) return (s as any).station_name;
+    if ((s as any).stationName) return (s as any).stationName;
+    const found = stations.find(st => st.id === s.station_id);
+    if (found) return found.name;
+    if (s.station_id) return `Station ${s.station_id}`;
+    return 'Gaming Session';
   };
 
   return (
@@ -74,7 +79,9 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
               <p className="text-center text-muted-foreground py-4">No completed sessions found.</p>
             ) : (
               sessions.map(s => {
-                const durationMins = s.end_time ? Math.floor((Number(s.end_time) - Number(s.start_time)) / 60000) : 0;
+                const startMs = new Date(s.start_time).getTime();
+                const endMs = s.end_time ? new Date(s.end_time).getTime() : Date.now();
+                const durationMins = Math.max(1, Math.round((endMs - startMs) / 60000));
                 
                 return (
                   <div 
@@ -83,7 +90,7 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
                     className="flex items-center justify-between p-3 border border-white/5 rounded-lg bg-black/10 hover:bg-black/30 transition-colors cursor-pointer"
                   >
                     <div>
-                      <div className="font-medium">{getStationName(s.station_id)}</div>
+                      <div className="font-medium">{getStationName(s)}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">
                         {new Date(s.start_time).toLocaleDateString()} at {new Date(s.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                       </div>

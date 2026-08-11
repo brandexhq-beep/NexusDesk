@@ -62,6 +62,7 @@ export function Games() {
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-muted-foreground">Name</TableHead>
+                <TableHead className="text-muted-foreground">Category</TableHead>
                 <TableHead className="text-muted-foreground text-center">Total Copies</TableHead>
                 <TableHead className="text-muted-foreground text-center">Available</TableHead>
                 <TableHead className="text-muted-foreground text-center">Status</TableHead>
@@ -78,6 +79,7 @@ export function Games() {
               {games.map((game) => (
                 <TableRow key={game.id} className="border-border hover:bg-muted/50">
                   <TableCell className="font-medium text-foreground">{game.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{game.category || '-'}</TableCell>
                   <TableCell className="text-center">
                     <Input
                       type="number"

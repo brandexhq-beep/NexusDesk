@@ -141,7 +141,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
 
   return (
     <Dialog open={!!station} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="bg-card text-card-foreground border-border max-w-md">
+      <DialogContent className="bg-card text-card-foreground border-border max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Start Session: {station?.name}</DialogTitle>
         </DialogHeader>

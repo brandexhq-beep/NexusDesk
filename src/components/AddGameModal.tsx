@@ -14,6 +14,7 @@ interface AddGameModalProps {
 export function AddGameModal({ open, onClose, onAdd }: AddGameModalProps) {
   const [name, setName] = useState('');
   const [copies, setCopies] = useState('1');
+  const [category, setCategory] = useState('');
   const [active, setActive] = useState(true);
   const [loading, setLoading] = useState(false);
 
@@ -21,15 +22,21 @@ export function AddGameModal({ open, onClose, onAdd }: AddGameModalProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      await db.games.add({
+      const payload: any = {
         name,
         total_copies: parseInt(copies, 10),
         active
-      });
+      };
+      if (category.trim()) {
+        payload.category = category.trim();
+      }
+      
+      await db.games.add(payload);
       onAdd();
       onClose();
       setName('');
       setCopies('1');
+      setCategory('');
       setActive(true);
     } catch (error) {
       console.error(error);
@@ -53,6 +60,17 @@ export function AddGameModal({ open, onClose, onAdd }: AddGameModalProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+              className="bg-background border-border"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="category">Category (Optional)</Label>
+            <Input
+              id="category"
+              placeholder="e.g. MULTIPLAYER"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
               className="bg-background border-border"
             />
           </div>

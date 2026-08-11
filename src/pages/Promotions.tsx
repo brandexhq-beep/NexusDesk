@@ -5,9 +5,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trash2, Send, Plus, Users } from 'lucide-react';
+import { Trash2, Send, Plus, Users, XCircle, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { MessageTemplate, Customer } from '../types';
 import { toast } from 'sonner';
+
+// DND: 9 PM – 9 AM IST. Blasts scheduled in this window will auto-delay.
+function getISTHour() {
+  const utcMs = Date.now() + new Date().getTimezoneOffset() * 60000;
+  return new Date(utcMs + 5.5 * 3600000).getHours();
+}
+function isDNDNow() {
+  const h = getISTHour();
+  return h >= 21 || h < 9;
+}
+function estimatedMinutes(recipientCount: number) {
+  // Backend uses 30–60s jitter per message
+  return Math.ceil(recipientCount * 45 / 60); // ~45s average per message
+}
 
 export function Promotions() {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -116,6 +130,16 @@ export function Promotions() {
     }
   };
 
+  const handleCancelJob = async (id: string) => {
+    try {
+      await db.whatsappPromotions.cancel(id);
+      toast.success('Campaign cancelled — it will not be sent.');
+      loadJobs();
+    } catch (e) {
+      toast.error('Failed to cancel campaign');
+    }
+  };
+
   // JobProgress component to encapsulate polling for a specific job's progress
   const JobProgress = ({ jobId, initialTotal }: { jobId: string, initialTotal: number }) => {
     const [progress, setProgress] = useState({ total: initialTotal, sent: 0, failed: 0 });
@@ -175,6 +199,31 @@ export function Promotions() {
               <CardDescription>Send a promotional message to all registered customers.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* DND Warning */}
+              {isDNDNow() && (
+                <div className="flex items-start gap-3 p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl">
+                  <AlertTriangle className="w-4 h-4 text-orange-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-orange-300">Do-Not-Disturb Hours Active</p>
+                    <p className="text-xs text-orange-300/70 mt-0.5">
+                      It is currently between 9 PM – 9 AM IST. Promotional blasts scheduled now will automatically
+                      wait until 9 AM before sending, to protect your customers and prevent WhatsApp bans.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Anti-spam info */}
+              <div className="flex items-start gap-3 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                <ShieldCheck className="w-4 h-4 text-indigo-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs text-indigo-300 font-medium">Anti-Ban Protection Active</p>
+                  <p className="text-xs text-indigo-300/70 mt-0.5">
+                    Messages are spaced 30–60 seconds apart with random jitter. Each customer receives at most
+                    1 promotional message per day. Max 60 promo messages per hour globally.
+                  </p>
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Campaign Name</Label>
@@ -222,7 +271,16 @@ export function Promotions() {
                   <p className="text-[10px] text-muted-foreground">This image will be sent along with your message.</p>
                 </div>
               </div>
-              <Button onClick={handleScheduleCampaign} className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700">
+              {/* Estimate */}
+              {customers.filter(c => c.phone).length > 0 && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground p-2 bg-black/30 rounded-lg">
+                  <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>
+                    {customers.filter(c => c.phone).length} recipients — estimated delivery time: ~{estimatedMinutes(customers.filter(c => c.phone).length)} minutes
+                  </span>
+                </div>
+              )}
+              <Button onClick={handleScheduleCampaign} className="w-full bg-indigo-600 hover:bg-indigo-700">
                 <Send className="w-4 h-4 mr-2" /> Schedule Campaign
               </Button>
             </CardContent>
@@ -256,10 +314,29 @@ export function Promotions() {
                         {(job.status === 'processing' || job.status === 'completed') && (
                           <JobProgress jobId={job.id} initialTotal={job.recipients.length} />
                         )}
+                        {job.status === 'completed' && job.estimatedMinutes && (
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Est. delivery: ~{job.estimatedMinutes} min total
+                            {job.queuedCount && ` • ${job.queuedCount} queued`}
+                          </p>
+                        )}
                       </div>
-                      <Button variant="ghost" onClick={() => handleDeleteJob(job.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {job.status === 'scheduled' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCancelJob(job.id)}
+                            title="Cancel before it fires"
+                            className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 gap-1"
+                          >
+                            <XCircle className="w-4 h-4" /> Cancel
+                          </Button>
+                        )}
+                        <Button variant="ghost" onClick={() => handleDeleteJob(job.id)} className="text-red-400 hover:text-red-300 hover:bg-red-500/10">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

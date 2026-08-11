@@ -1,14 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
-import { db, whatsapp } from '../services/db';
+import { db, whatsapp, updater } from '../services/db';
 import type { AppSettings, PricingRule } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle } from 'lucide-react';
+import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { PricingRuleModal } from '../components/PricingRuleModal';
 import { QRCodeCanvas } from 'qrcode.react';
+import { toast } from 'sonner';
 
 export function Settings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -16,6 +17,7 @@ export function Settings() {
     cafe_name: '',
     cafe_logo_url: '',
     currency_symbol: '',
+    loyalty_enabled: true,
     loyalty_conversion_rate: '',
     loyalty_expiry_enabled: false,
     loyalty_expiry_days: '',
@@ -32,6 +34,7 @@ export function Settings() {
     low_stock_threshold: '5'
   });
   const [loading, setLoading] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
@@ -58,6 +61,7 @@ export function Settings() {
       cafe_name: data.cafe_name || '',
       cafe_logo_url: data.cafe_logo_url || '',
       currency_symbol: data.currency_symbol || '',
+      loyalty_enabled: data.loyalty_enabled !== false, // Default to true if not set
       loyalty_conversion_rate: data.loyalty_conversion_rate.toString(),
       loyalty_expiry_enabled: !!data.loyalty_expiry_enabled,
       loyalty_expiry_days: data.loyalty_expiry_days?.toString() || '30',
@@ -121,6 +125,15 @@ export function Settings() {
     }
   };
 
+  const handleResendQueueItem = async (id: string) => {
+    try {
+      await db.whatsappQueue.resend(id);
+      setWaQueue(prev => prev.map(item => item.id === id ? { ...item, status: 'pending', retryCount: 0 } : item));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleSave = async () => {
     setLoading(true);
     try {
@@ -128,6 +141,7 @@ export function Settings() {
         cafe_name: formData.cafe_name,
         cafe_logo_url: formData.cafe_logo_url,
         currency_symbol: formData.currency_symbol,
+        loyalty_enabled: formData.loyalty_enabled,
         loyalty_conversion_rate: Number(formData.loyalty_conversion_rate),
         loyalty_expiry_enabled: formData.loyalty_expiry_enabled,
         loyalty_expiry_days: Number(formData.loyalty_expiry_days),
@@ -294,6 +308,51 @@ export function Settings() {
                   onChange={handleRestore} 
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Application Updates</CardTitle>
+              <CardDescription>Check for newer versions of Sara Gaming Zone Management.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                variant="outline"
+                disabled={checkingUpdate}
+                className="border-white/10 bg-white/5 hover:bg-white/10 gap-2"
+                onClick={async () => {
+                  setCheckingUpdate(true);
+                  toast.info('Checking for updates...');
+                  try {
+                    if ((window as any).api?.updater) {
+                      await updater.checkForUpdates();
+                      setTimeout(() => {
+                        toast.success('Check complete. You are using the latest version!');
+                        setCheckingUpdate(false);
+                      }, 2500);
+                    } else {
+                      setTimeout(() => {
+                        toast.info('Automatic update check is active in packaged production builds.');
+                        setCheckingUpdate(false);
+                      }, 1200);
+                    }
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Failed to check for updates');
+                    setCheckingUpdate(false);
+                  }
+                }}
+              >
+                {checkingUpdate ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                {checkingUpdate ? 'Checking for Updates...' : 'Check for Updates Now'}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Updates are downloaded automatically in the background. A notification will appear when one is ready to install.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -474,7 +533,24 @@ export function Settings() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-4">
-                <div className="space-y-2">
+                <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                  <div>
+                    <Label className="text-base">Enable Loyalty System</Label>
+                    <p className="text-xs text-muted-foreground mt-1">If disabled, customers will not earn or redeem points, and points will be hidden from invoices.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer" 
+                      checked={formData.loyalty_enabled}
+                      onChange={(e) => setFormData({...formData, loyalty_enabled: e.target.checked})}
+                    />
+                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
+                </div>
+
+                <div className={`space-y-4 transition-opacity ${formData.loyalty_enabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                  <div className="space-y-2">
                   <Label>Conversion Rate</Label>
                   <div className="flex items-center gap-3">
                     <Input 
@@ -520,18 +596,32 @@ export function Settings() {
                   )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </CardContent>
+        </Card>
         </TabsContent>
 
-        {/* WHATSAPP TAB */}
         <TabsContent value="whatsapp" className="space-y-6">
           <Card className="bg-black/40 backdrop-blur-md border-white/10">
-            <CardHeader>
-              <CardTitle className="text-card-foreground flex items-center gap-2">
-                <MessageCircle className="w-5 h-5 text-indigo-400" /> WhatsApp Server Connection
-              </CardTitle>
-              <CardDescription>Scan the QR code to link your admin WhatsApp account for automated messages.</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-card-foreground flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-indigo-400" /> WhatsApp Server Connection
+                </CardTitle>
+                <CardDescription>Scan the QR code to link your admin WhatsApp account for automated messages.</CardDescription>
+              </div>
+              {!waStatus.ready && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-white/10 gap-2 shrink-0"
+                  onClick={async () => {
+                    try { await whatsapp.reconnect(); } catch (_) {}
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4" /> Reconnect
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="space-y-4 flex flex-col items-center justify-center p-8">
               {waStatus.ready ? (
@@ -539,20 +629,50 @@ export function Settings() {
                   <CheckCircle2 className="w-16 h-16" />
                   <span className="text-lg font-bold">WhatsApp is Connected!</span>
                   <p className="text-sm text-emerald-400/70 text-center max-w-sm">
-                    Invoices and 5-minute session reminders will be sent automatically from your linked account.
+                    Invoices, session reminders, review requests and loyalty alerts will be sent automatically from your linked account.
                   </p>
                 </div>
               ) : waStatus.qr ? (
                 <div className="flex flex-col items-center gap-4">
-                  <div className="bg-white p-4 rounded-xl">
+                  <div className="bg-white p-4 rounded-xl shadow-2xl">
                     <QRCodeCanvas value={waStatus.qr} size={256} />
                   </div>
-                  <span className="text-muted-foreground font-medium animate-pulse">Waiting for scan...</span>
+                  <span className="text-muted-foreground font-medium animate-pulse">Waiting for scan — open WhatsApp on your phone and scan this code…</span>
+                  <p className="text-xs text-muted-foreground/60 text-center max-w-xs">
+                    WhatsApp → Menu (⋮) → Linked Devices → Link a Device
+                  </p>
+                </div>
+              ) : (waStatus as any).state === 'auth_failure' ? (
+                <div className="flex flex-col items-center text-red-400 gap-3 py-8">
+                  <AlertCircle className="w-12 h-12" />
+                  <span className="font-bold">Authentication Failed</span>
+                  <p className="text-sm text-red-400/70 text-center max-w-sm">Your session was rejected. A new QR code will appear shortly — please re-scan.</p>
+                </div>
+              ) : (waStatus as any).state === 'disconnected' ? (
+                <div className="flex flex-col items-center text-orange-400 gap-3 py-8">
+                  <AlertCircle className="w-12 h-12" />
+                  <span className="font-bold">Disconnected</span>
+                  <p className="text-sm text-orange-400/70 text-center max-w-sm">
+                    {(waStatus as any).initError || 'Connection lost. Attempting to reconnect automatically…'}
+                  </p>
+                </div>
+              ) : (waStatus as any).state === 'error' ? (
+                <div className="flex flex-col items-center text-red-400 gap-3 py-8">
+                  <AlertCircle className="w-12 h-12" />
+                  <span className="font-bold">Server Error</span>
+                  <p className="text-sm text-red-400/70 text-center max-w-sm">{(waStatus as any).initError || 'The WhatsApp browser process could not start.'}</p>
+                  <p className="text-xs text-red-400/50">Make sure Chrome or Edge is installed on this computer.</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-muted-foreground gap-3 py-8">
-                  <div className="w-12 h-12 border-4 border-muted-foreground border-t-transparent rounded-full animate-spin"></div>
-                  <span>Connecting to WhatsApp Server... Make sure `npm run whatsapp` is running.</span>
+                  <div className="w-12 h-12 border-4 border-muted-foreground/30 border-t-indigo-400 rounded-full animate-spin" />
+                  <span className="font-medium">
+                    {(waStatus as any).state === 'authenticated' ? 'Loading your linked account…' : 'Starting WhatsApp browser…'}
+                  </span>
+                  <p className="text-xs text-muted-foreground/50">This can take 20–60 seconds on first launch.</p>
+                  {(waStatus as any).elapsedMs > 60000 && (
+                    <p className="text-xs text-yellow-400/70">Taking longer than expected. If this persists, click Reconnect above.</p>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -608,9 +728,19 @@ export function Settings() {
                   {waQueue.map((item, idx) => (
                     <div key={item.id || idx} className="flex items-center justify-between p-3 border border-white/5 rounded-xl bg-black/20">
                       <div className="flex-1 overflow-hidden">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="font-medium text-foreground text-sm">{item.chatId.replace('@c.us', '')}</span>
                           <span className="text-xs text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</span>
+                          {/* Status badge */}
+                          {item.status === 'sent' && (
+                            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold">✓ Sent</span>
+                          )}
+                          {item.status === 'failed' && (
+                            <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-bold">✗ Failed</span>
+                          )}
+                          {item.status === 'pending' && (
+                            <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-bold animate-pulse">⏳ Pending</span>
+                          )}
                           {(item.retryCount || 0) > 0 && (
                             <span className="flex items-center gap-1 text-[10px] bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded font-bold">
                               <AlertCircle className="w-3 h-3" /> Retry {item.retryCount}/3
@@ -620,9 +750,22 @@ export function Settings() {
                         <p className="text-xs text-muted-foreground truncate max-w-[400px]">{item.message}</p>
                         {item.pdfName && <p className="text-[10px] text-indigo-400 mt-1">📎 {item.pdfName}</p>}
                       </div>
-                      <Button onClick={() => handleDeleteQueueItem(item.id)} variant="ghost" size="icon" className="text-muted-foreground hover:text-red-400 hover:bg-red-400/10 h-8 w-8 ml-4 shrink-0">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1 ml-4 shrink-0">
+                        {(item.status === 'failed' || item.status === 'sent') && (
+                          <Button
+                            onClick={() => handleResendQueueItem(item.id)}
+                            variant="ghost"
+                            size="icon"
+                            title="Re-queue this message"
+                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 h-8 w-8"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <Button onClick={() => handleDeleteQueueItem(item.id)} variant="ghost" size="icon" className="text-muted-foreground hover:text-red-400 hover:bg-red-400/10 h-8 w-8">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

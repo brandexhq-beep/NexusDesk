@@ -56,6 +56,7 @@ export function Menu() {
               <TableRow className="border-border hover:bg-transparent">
                 <TableHead className="text-muted-foreground">Name</TableHead>
                 <TableHead className="text-muted-foreground">Category</TableHead>
+                <TableHead className="text-muted-foreground">Details</TableHead>
                 <TableHead className="text-muted-foreground text-right">Price</TableHead>
                 <TableHead className="text-muted-foreground">Stock</TableHead>
                 <TableHead className="text-muted-foreground">Status</TableHead>
@@ -65,8 +66,19 @@ export function Menu() {
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id} className="border-border hover:bg-muted/50">
-                  <TableCell className="font-medium text-foreground">{item.name}</TableCell>
+                  <TableCell className="font-medium text-foreground">
+                    {item.name}
+                    {item.subcategory && <div className="text-xs text-muted-foreground">{item.subcategory}</div>}
+                  </TableCell>
                   <TableCell className="text-muted-foreground capitalize">{item.category}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {item.category === 'package' && (
+                      <span className="flex flex-col gap-0.5">
+                        {item.package_minutes ? `${item.package_minutes} Mins` : ''}
+                        {item.player_count ? `${item.player_count} Player(s)` : ''}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right text-muted-foreground">₹ {item.price}</TableCell>
                   <TableCell>
                     {(item.category === 'snack' || item.category === 'drink') ? (

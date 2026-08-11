@@ -22,7 +22,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   const [paymentMode, setPaymentMode] = useState<string>('cash');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
   const [loading, setLoading] = useState(false);
-  const [bill, setBill] = useState({ gameTime: 0, food: 0, subtotal: 0, discount: 0, total: 0, specialDiscountAmt: 0, customDiscountAmt: 0 });
+  const [bill, setBill] = useState({ gameMinutes: 0, gameTime: 0, food: 0, subtotal: 0, discount: 0, total: 0, specialDiscountAmt: 0, customDiscountAmt: 0 });
   const [customDiscount, setCustomDiscount] = useState<number>(0);
   const [conversionRate, setConversionRate] = useState<number>(10);
   const [minutesUsed, setMinutesUsed] = useState<number>(0);
@@ -80,9 +80,11 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
 
       setMinutesUsed(usedMins);
       const foodCost = session.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0);
+      const totalMins = Math.ceil((now - Number(session.start_time)) / 60000);
 
       setBill(prev => ({
         ...prev,
+        gameMinutes: totalMins,
         gameTime: gameTimeCost,
         food: foodCost,
         subtotal: gameTimeCost + foodCost,
@@ -193,7 +195,8 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
               pointsRedeemed: pointsToRedeem,
               loyaltyDiscount: bill.discount,
               specialDiscount: bill.specialDiscountAmt || 0,
-              customDiscount: bill.customDiscountAmt || 0
+              customDiscount: bill.customDiscountAmt || 0,
+              gameMinutes: bill.gameMinutes
             };
             
             const pdfBlob = await generateInvoicePDF(completedSession, station, settings, invoiceData);
@@ -399,21 +402,13 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
                 </tr>
               </thead>
               <tbody>
-                {session?.base_amount && session.base_amount > 0 ? (
+                {bill.gameTime > 0 && (
                   <tr>
-                    <td className="py-1">Gaming Time</td>
+                    <td className="py-1">Gaming Time ({bill.gameMinutes} mins)</td>
                     <td className="text-center py-1">1</td>
-                    <td className="text-right py-1">{currencyStr} {session.base_amount.toFixed(2)}</td>
+                    <td className="text-right py-1">{currencyStr} {bill.gameTime.toFixed(2)}</td>
                   </tr>
-                ) : null}
-                
-                {session?.extended_minutes && session.extended_minutes > 0 ? (
-                  <tr>
-                    <td className="py-1">Extended ({session.extended_minutes}m)</td>
-                    <td className="text-center py-1">1</td>
-                    <td className="text-right py-1">{currencyStr} {((session.extended_minutes / 60) * (station?.hourly_rate || 0)).toFixed(2)}</td>
-                  </tr>
-                ) : null}
+                )}
 
                 {session?.orders.map((o, idx) => (
                   <tr key={idx}>
@@ -452,14 +447,16 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
               <span>{currencyStr} {bill.total.toFixed(2)}</span>
             </div>
 
-            <div className="mt-6 text-center text-xs font-bold">
-              + {Math.floor(bill.total / 10)} Loyalty Pts!
-              {settings?.loyalty_expiry_enabled && (
-                <div className="text-[10px] font-normal mt-1 text-gray-500 italic">
-                  (Expires in {settings.loyalty_expiry_days || 30} days)
-                </div>
-              )}
-            </div>
+            {settings?.loyalty_enabled !== false && (
+              <div className="mt-6 text-center text-xs font-bold">
+                + {Math.floor(bill.total / (settings?.loyalty_conversion_rate || 10))} Loyalty Pts!
+                {settings?.loyalty_expiry_enabled && (
+                  <div className="text-[10px] font-normal mt-1 text-gray-500 italic">
+                    (Expires in {settings.loyalty_expiry_days || 30} days)
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="mt-2 text-center text-xs italic text-gray-600">
               {settings?.invoice_footer_msg || 'Thank you!'}

@@ -4,6 +4,7 @@ import { Gamepad2, Users, Monitor, LogOut, Coffee, Menu as MenuIcon, Settings as
 import { GlobalAlerts } from './GlobalAlerts';
 import { ReviewQueue } from './ReviewQueue';
 import { WhatsAppStatus } from './WhatsAppStatus';
+import { UpdateBanner } from './UpdateBanner';
 import { db } from '../services/db';
 import { useAuth } from './AuthProvider';
 import { Command } from 'cmdk';
@@ -51,6 +52,7 @@ export function Layout() {
     <div className="flex h-screen bg-black text-foreground overflow-hidden">
       <GlobalAlerts />
       <ReviewQueue />
+      <UpdateBanner />
       
       {/* Command Palette */}
       <Command.Dialog 

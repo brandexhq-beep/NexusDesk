@@ -51,3 +51,11 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(240, 5%, 40%); 
 }
+
+/* Ensure Sonner toaster wrapper never blocks clicks on inputs/buttons */
+[data-sonner-toaster] {
+  pointer-events: none !important;
+}
+[data-sonner-toast] {
+  pointer-events: auto !important;
+}

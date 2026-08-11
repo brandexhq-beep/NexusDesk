@@ -13,11 +13,12 @@
     "preview": "vite preview",
     "whatsapp": "node whatsapp-server.cjs",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
-    "electron:build": "npm run build && electron-builder"
+    "electron:build": "npm run build && electron-builder",
+    "electron:publish": "npm run build && electron-builder --publish always"
   },
   "build": {
-    "appId": "com.brandex.gamingcafemanagement",
-    "productName": "Gaming Cafe Management",
+    "appId": "com.brandex.saragamingzone",
+    "productName": "Sara Gaming Zone",
     "directories": {
       "output": "build-dist"
     },

@@ -37,7 +37,7 @@ export function PricingRuleModal({ rule, isOpen, onClose, onSave }: PricingRuleM
       setName(rule.name);
       setStartTime(rule.start_time);
       setEndTime(rule.end_time);
-      setRate(rule.fixed_hourly_rate.toString());
+      setRate(rule.fixed_hourly_rate?.toString() || '');
       setActive(rule.active);
       setDays(rule.days || [1, 2, 3, 4, 5]);
     } else {

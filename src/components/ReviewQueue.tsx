@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { db, whatsapp } from '../services/db';
 import type { AppSettings } from '../types';
-import { AlertCircle } from 'lucide-react';
+const REVIEW_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days between review requests per customer
 
 export function ReviewQueue() {
-  const [errorCount, setErrorCount] = useState(0);
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
   useEffect(() => {
@@ -14,73 +13,91 @@ export function ReviewQueue() {
   useEffect(() => {
     const processQueue = async () => {
       if (!settings) return;
-      
+
+      // Skip if no review URL configured — don't spam with placeholder link
+      const googleReviewLink = settings.google_review_url || '';
+      if (!googleReviewLink || googleReviewLink.includes('YOUR_UNIQUE_LINK')) return;
+
       const now = Date.now();
       const allRequests = await db.reviewRequests.getAll();
       const dueRequests = allRequests.filter(r => !r.sent && r.scheduled_for <= now);
 
       if (dueRequests.length === 0) {
-        setErrorCount(0);
         return;
       }
+
+      // Build a set of customer IDs that have already received a review request in the last 7 days
+      const recentlySentCustomerIds = new Set(
+        allRequests
+          .filter(r => r.sent && r.created_at && (now - Number(r.created_at)) < REVIEW_COOLDOWN_MS)
+          .map(r => r.customer_id)
+      );
 
       let failures = 0;
 
       for (const req of dueRequests) {
         try {
           const customer = await db.customers.getById(req.customer_id);
+
+          // No customer or phone → silently mark sent (never retry)
           if (!customer || !customer.phone) {
-             await db.reviewRequests.markSent(req.id);
-             continue;
+            await db.reviewRequests.markSent(req.id);
+            continue;
+          }
+
+          // 7-day cooldown: customer already got a review request recently
+          if (recentlySentCustomerIds.has(req.customer_id)) {
+            await db.reviewRequests.markSent(req.id); // Mark done so it doesn't loop
+            console.log(`[ReviewQueue] Skipping review for ${customer.name} — sent within last 7 days.`);
+            continue;
           }
 
           const sessions = await db.sessions.getAll();
           const session = sessions.find(s => s.id === req.session_id);
           if (!session) {
-             await db.reviewRequests.markSent(req.id);
-             continue;
+            await db.reviewRequests.markSent(req.id);
+            continue;
           }
-          
+
           const stations = await db.stations.getAll();
           const station = stations.find(s => s.id === session.station_id);
           if (!station) {
-             await db.reviewRequests.markSent(req.id);
-             continue;
+            await db.reviewRequests.markSent(req.id);
+            continue;
           }
 
-          const googleReviewLink = settings.google_review_url || "https://g.page/r/YOUR_UNIQUE_LINK/review";
-          const cafeName = settings.cafe_name || "us";
-          const message = `Hi ${customer.name},\n\nHope you enjoyed your session at ${cafeName} today!\n\nIf you have a moment, we would love to hear your feedback. Please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
+          const cafeName = settings.cafe_name || 'us';
+          const message =
+            `Hi ${customer.name}! 👋\n\n` +
+            `Hope you had an amazing session at *${cafeName}* today! 🎮\n\n` +
+            `We'd love to hear what you thought. A quick Google review would mean the world to us:\n` +
+            `${googleReviewLink}\n\n` +
+            `Thank you for playing with us! See you again soon. 🙌`;
 
           const response = await whatsapp.sendInvoice({ phone: customer.phone, message });
 
-          if (response.ok) {
+          if (response.success && !response.deduplicated) {
+            await db.reviewRequests.markSent(req.id);
+            // Mark this customer as "recently sent" so siblings in the same batch are skipped
+            recentlySentCustomerIds.add(req.customer_id);
+          } else if (response.deduplicated) {
+            // Message suppressed by the dedup layer — mark sent so it doesn't loop
             await db.reviewRequests.markSent(req.id);
           } else {
             failures++;
           }
         } catch (err) {
+          console.error('[ReviewQueue] Error processing request:', err);
           failures++;
         }
       }
-      
-      setErrorCount(failures);
     };
 
     processQueue();
-    // Poll every 30 seconds
     const interval = setInterval(processQueue, 30000);
     return () => clearInterval(interval);
   }, [settings]);
 
-  if (errorCount === 0) return null;
-
-  return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 w-80">
-      <div className="bg-red-500 text-white px-4 py-2 rounded-xl shadow-lg font-medium flex items-center gap-2">
-        <AlertCircle className="w-5 h-5" />
-        <span className="text-sm">WhatsApp Server Offline! {errorCount} messages pending. Start the local server to resume.</span>
-      </div>
-    </div>
-  );
+  // Silent queue processor — status is shown in the left sidebar WhatsApp widget
+  return null;
 }

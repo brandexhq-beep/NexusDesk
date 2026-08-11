@@ -36,9 +36,9 @@ export default defineConfig({
         enabled: true
       },
       manifest: {
-        name: 'Saara Gaming Zone',
-        short_name: 'Saara',
-        description: 'Saara Gaming Zone Management System',
+        name: 'Sara Gaming Zone',
+        short_name: 'Sara',
+        description: 'Sara Gaming Zone Management System',
         theme_color: '#000000',
         background_color: '#000000',
         display: 'standalone',
