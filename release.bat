@@ -24,6 +24,9 @@ if %errorlevel% neq 0 (
 echo.
 echo [2/4] Building and publishing release to GitHub...
 echo Note: This requires the GH_TOKEN environment variable to be set for GitHub releases.
+if exist .env (
+    for /f "usebackq tokens=* delims=" %%A in (".env") do set %%A
+)
 call npm run electron:publish
 
 if %errorlevel% neq 0 (
