@@ -233,94 +233,105 @@ function initDatabase() {
 function setupIpcHandlers() {
   initDatabase();
 
+  const handleSafe = (channel, handler) => {
+    ipcMain.handle(channel, async (...args) => {
+      try {
+        return await handler(...args);
+      } catch (err) {
+        console.error(`[DB Error] ${channel}:`, err);
+        throw err; // Bubbles up to frontend safely
+      }
+    });
+  };
+
   // STATIONS
-  ipcMain.handle('db:stations:getAll',    ()          => jsonStore.getAll('stations'));
-  ipcMain.handle('db:stations:add',       (_, item)   => jsonStore.add('stations', item));
-  ipcMain.handle('db:stations:update',    (_, id, d)  => jsonStore.update('stations', id, d));
-  ipcMain.handle('db:stations:delete',    (_, id)     => jsonStore.delete('stations', id));
+  handleSafe('db:stations:getAll',    ()          => jsonStore.getAll('stations'));
+  handleSafe('db:stations:add',       (_, item)   => jsonStore.add('stations', item));
+  handleSafe('db:stations:update',    (_, id, d)  => jsonStore.update('stations', id, d));
+  handleSafe('db:stations:delete',    (_, id)     => jsonStore.delete('stations', id));
 
   // CUSTOMERS
-  ipcMain.handle('db:customers:getAll',   ()          => jsonStore.getAll('customers'));
-  ipcMain.handle('db:customers:getById',  (_, id)     => jsonStore.getById('customers', id));
-  ipcMain.handle('db:customers:add',      (_, item)   => jsonStore.add('customers', item));
-  ipcMain.handle('db:customers:update',   (_, id, d)  => jsonStore.update('customers', id, d));
+  handleSafe('db:customers:getAll',   ()          => jsonStore.getAll('customers'));
+  handleSafe('db:customers:getById',  (_, id)     => jsonStore.getById('customers', id));
+  handleSafe('db:customers:add',      (_, item)   => jsonStore.add('customers', item));
+  handleSafe('db:customers:update',   (_, id, d)  => jsonStore.update('customers', id, d));
 
   // SESSIONS
-  ipcMain.handle('db:sessions:getAll',    ()          => jsonStore.getAll('sessions'));
-  ipcMain.handle('db:sessions:add',       (_, item)   => jsonStore.add('sessions', item));
-  ipcMain.handle('db:sessions:update',    (_, id, d)  => jsonStore.update('sessions', id, d));
-  ipcMain.handle('db:sessions:getActiveByStation', (_, stationId) => {
+  handleSafe('db:sessions:getAll',    ()          => jsonStore.getAll('sessions'));
+  handleSafe('db:sessions:add',       (_, item)   => jsonStore.add('sessions', item));
+  handleSafe('db:sessions:update',    (_, id, d)  => jsonStore.update('sessions', id, d));
+  handleSafe('db:sessions:getActiveByStation', (_, stationId) => {
     const sessions = jsonStore.getAll('sessions');
     return sessions.find(s => s.station_id === stationId && s.status === 'active');
   });
 
   // MENU
-  ipcMain.handle('db:menu:getAll',        ()          => jsonStore.getAll('menu'));
-  ipcMain.handle('db:menu:add',           (_, item)   => jsonStore.add('menu', item));
-  ipcMain.handle('db:menu:update',        (_, id, d)  => jsonStore.update('menu', id, d));
-  ipcMain.handle('db:menu:delete',        (_, id)     => jsonStore.delete('menu', id));
+  handleSafe('db:menu:getAll',        ()          => jsonStore.getAll('menu'));
+  handleSafe('db:menu:add',           (_, item)   => jsonStore.add('menu', item));
+  handleSafe('db:menu:update',        (_, id, d)  => jsonStore.update('menu', id, d));
+  handleSafe('db:menu:delete',        (_, id)     => jsonStore.delete('menu', id));
 
   // TRANSACTIONS
-  ipcMain.handle('db:transactions:getAll',()          => jsonStore.getAll('transactions'));
-  ipcMain.handle('db:transactions:add',   (_, item)   => jsonStore.add('transactions', item));
+  handleSafe('db:transactions:getAll',()          => jsonStore.getAll('transactions'));
+  handleSafe('db:transactions:add',   (_, item)   => jsonStore.add('transactions', item));
 
   // SETTINGS
-  ipcMain.handle('db:settings:get', () => {
+  handleSafe('db:settings:get', () => {
     const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('app_settings');
     return row ? JSON.parse(row.value) : {};
   });
-  ipcMain.handle('db:settings:update', (_, data) => {
+  handleSafe('db:settings:update', (_, data) => {
     const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('app_settings');
     const current = row ? JSON.parse(row.value) : {};
     db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(JSON.stringify({ ...current, ...data }), 'app_settings');
   });
 
   // PRICING RULES
-  ipcMain.handle('db:pricingRules:getAll',    ()          => jsonStore.getAll('pricing_rules'));
-  ipcMain.handle('db:pricingRules:add',       (_, item)   => jsonStore.add('pricing_rules', item));
-  ipcMain.handle('db:pricingRules:update',    (_, id, d)  => jsonStore.update('pricing_rules', id, d));
-  ipcMain.handle('db:pricingRules:delete',    (_, id)     => jsonStore.delete('pricing_rules', id));
+  handleSafe('db:pricingRules:getAll',    ()          => jsonStore.getAll('pricing_rules'));
+  handleSafe('db:pricingRules:add',       (_, item)   => jsonStore.add('pricing_rules', item));
+  handleSafe('db:pricingRules:update',    (_, id, d)  => jsonStore.update('pricing_rules', id, d));
+  handleSafe('db:pricingRules:delete',    (_, id)     => jsonStore.delete('pricing_rules', id));
 
   // REVIEW REQUESTS
-  ipcMain.handle('db:reviewRequests:getAll',  ()          => jsonStore.getAll('review_requests'));
-  ipcMain.handle('db:reviewRequests:add',     (_, item)   => jsonStore.add('review_requests', item));
-  ipcMain.handle('db:reviewRequests:markSent',(_, id)     => jsonStore.update('review_requests', id, { sent: true }));
+  handleSafe('db:reviewRequests:getAll',  ()          => jsonStore.getAll('review_requests'));
+  handleSafe('db:reviewRequests:add',     (_, item)   => jsonStore.add('review_requests', item));
+  handleSafe('db:reviewRequests:markSent',(_, id)     => jsonStore.update('review_requests', id, { sent: true }));
 
   // TEMPLATES
-  ipcMain.handle('db:templates:getAll',   ()          => jsonStore.getAll('templates'));
-  ipcMain.handle('db:templates:add',      (_, item)   => jsonStore.add('templates', item));
-  ipcMain.handle('db:templates:update',   (_, id, d)  => jsonStore.update('templates', id, d));
-  ipcMain.handle('db:templates:delete',   (_, id)     => jsonStore.delete('templates', id));
+  handleSafe('db:templates:getAll',   ()          => jsonStore.getAll('templates'));
+  handleSafe('db:templates:add',      (_, item)   => jsonStore.add('templates', item));
+  handleSafe('db:templates:update',   (_, id, d)  => jsonStore.update('templates', id, d));
+  handleSafe('db:templates:delete',   (_, id)     => jsonStore.delete('templates', id));
 
   // GAMES
-  ipcMain.handle('db:games:getAll',       ()          => jsonStore.getAll('games'));
-  ipcMain.handle('db:games:add',          (_, item)   => jsonStore.add('games', item));
-  ipcMain.handle('db:games:update',       (_, id, d)  => jsonStore.update('games', id, d));
-  ipcMain.handle('db:games:delete',       (_, id)     => jsonStore.delete('games', id));
+  handleSafe('db:games:getAll',       ()          => jsonStore.getAll('games'));
+  handleSafe('db:games:add',          (_, item)   => jsonStore.add('games', item));
+  handleSafe('db:games:update',       (_, id, d)  => jsonStore.update('games', id, d));
+  handleSafe('db:games:delete',       (_, id)     => jsonStore.delete('games', id));
 
   // EXPENSES
-  ipcMain.handle('db:expenses:getAll',    ()          => jsonStore.getAll('expenses'));
-  ipcMain.handle('db:expenses:add',       (_, item)   => jsonStore.add('expenses', item));
-  ipcMain.handle('db:expenses:delete',    (_, id)     => jsonStore.delete('expenses', id));
+  handleSafe('db:expenses:getAll',    ()          => jsonStore.getAll('expenses'));
+  handleSafe('db:expenses:add',       (_, item)   => jsonStore.add('expenses', item));
+  handleSafe('db:expenses:delete',    (_, id)     => jsonStore.delete('expenses', id));
 
   // WHATSAPP QUEUE
-  ipcMain.handle('db:whatsappQueue:getAll',   ()         => jsonStore.getAll('whatsapp_queue'));
-  ipcMain.handle('db:whatsappQueue:add',      (_, item)  => jsonStore.add('whatsapp_queue', item));
-  ipcMain.handle('db:whatsappQueue:update',   (_, id, d) => jsonStore.update('whatsapp_queue', id, d));
-  ipcMain.handle('db:whatsappQueue:delete',   (_, id)    => jsonStore.delete('whatsapp_queue', id));
-  ipcMain.handle('db:whatsappQueue:clear',    ()         => { db.prepare('DELETE FROM whatsapp_queue').run(); });
+  handleSafe('db:whatsappQueue:getAll',   ()         => jsonStore.getAll('whatsapp_queue'));
+  handleSafe('db:whatsappQueue:add',      (_, item)  => jsonStore.add('whatsapp_queue', item));
+  handleSafe('db:whatsappQueue:update',   (_, id, d) => jsonStore.update('whatsapp_queue', id, d));
+  handleSafe('db:whatsappQueue:delete',   (_, id)    => jsonStore.delete('whatsapp_queue', id));
+  handleSafe('db:whatsappQueue:clear',    ()         => { db.prepare('DELETE FROM whatsapp_queue').run(); });
   // Resend: reset a failed/sent item back to pending with 0 retries
-  ipcMain.handle('db:whatsappQueue:resend',   (_, id)    => {
+  handleSafe('db:whatsappQueue:resend',   (_, id)    => {
     jsonStore.update('whatsapp_queue', id, { status: 'pending', retryCount: 0, completedAt: null, error: null });
   });
 
   // WHATSAPP PROMOTIONS
-  ipcMain.handle('db:whatsappPromotions:getAll',   ()         => jsonStore.getAll('whatsapp_promotions'));
-  ipcMain.handle('db:whatsappPromotions:add',      (_, item)  => jsonStore.add('whatsapp_promotions', item));
-  ipcMain.handle('db:whatsappPromotions:update',   (_, id, d) => jsonStore.update('whatsapp_promotions', id, d));
-  ipcMain.handle('db:whatsappPromotions:delete',   (_, id)    => jsonStore.delete('whatsapp_promotions', id));
+  handleSafe('db:whatsappPromotions:getAll',   ()         => jsonStore.getAll('whatsapp_promotions'));
+  handleSafe('db:whatsappPromotions:add',      (_, item)  => jsonStore.add('whatsapp_promotions', item));
+  handleSafe('db:whatsappPromotions:update',   (_, id, d) => jsonStore.update('whatsapp_promotions', id, d));
+  handleSafe('db:whatsappPromotions:delete',   (_, id)    => jsonStore.delete('whatsapp_promotions', id));
   // Cancel a scheduled promotion before it fires
-  ipcMain.handle('db:whatsappPromotions:cancel',   (_, id)    => {
+  handleSafe('db:whatsappPromotions:cancel',   (_, id)    => {
     jsonStore.update('whatsapp_promotions', id, { status: 'cancelled', cancelledAt: Date.now() });
   });
 
