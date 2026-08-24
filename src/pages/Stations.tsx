@@ -1,21 +1,25 @@
 import { useEffect, useState } from 'react';
 import { db } from '../services/db';
-import type { Station } from '../types';
+import type { Station, Game } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EditStationModal } from '../components/EditStationModal';
 import { AddStationModal } from '../components/AddStationModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Gamepad2 } from 'lucide-react';
 
 export function Stations() {
   const [stations, setStations] = useState<Station[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
   const [editingStation, setEditingStation] = useState<Station | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [stationToDelete, setStationToDelete] = useState<Station | null>(null);
 
   const loadStations = () => {
-    db.stations.getAll().then(setStations);
+    Promise.all([db.stations.getAll(), db.games.getAll()]).then(([stData, gmData]) => {
+      setStations(stData);
+      setGames(gmData);
+    });
   };
 
   useEffect(() => {
@@ -50,6 +54,9 @@ export function Stations() {
           const isFree = s.status === 'free';
           const isOccupied = s.status === 'occupied';
           const isMaintenance = s.status === 'maintenance';
+
+          const installedCount = (s.installed_games || []).length;
+          const installedNames = (s.installed_games || []).map(id => games.find(g => g.id === id)?.name).filter(Boolean);
 
           return (
             <Card 
@@ -90,16 +97,27 @@ export function Stations() {
                 </div>
               </CardHeader>
               
-              <CardContent className="py-4">
+              <CardContent className="py-4 space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Hourly Rate</span>
                   <span className="font-mono text-lg text-white font-medium">₹ {s.hourly_rate}</span>
                 </div>
+                {installedCount > 0 ? (
+                  <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Gamepad2 className="w-3.5 h-3.5 text-cyan-400" />
+                      Installed Games
+                    </span>
+                    <span className="font-medium text-cyan-400" title={installedNames.join(', ')}>
+                      {installedCount} games
+                    </span>
+                  </div>
+                ) : null}
               </CardContent>
 
               <div className="px-6 pb-4 pt-2 flex gap-2">
                 <button onClick={() => setEditingStation(s)} className="flex-1 bg-white/5 hover:bg-white/10 text-xs py-2 rounded-md text-foreground transition-colors border border-white/5 hover:border-white/10">
-                  Edit Rate
+                  Edit & Games
                 </button>
                 <button onClick={() => toggleMaintenance(s)} disabled={isOccupied} className={`flex-1 text-xs py-2 rounded-md text-foreground transition-colors border ${isMaintenance ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/20 text-cyan-400' : 'bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/10'}`}>
                   {isMaintenance ? 'Enable' : 'Maintenance'}

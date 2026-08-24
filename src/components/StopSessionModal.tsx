@@ -28,6 +28,8 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   const [minutesUsed, setMinutesUsed] = useState<number>(0);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [sendInvoice, setSendInvoice] = useState(false);
+  const [manualGameCost, setManualGameCost] = useState<string>('');
+  const [isManualOverride, setIsManualOverride] = useState(false);
 
   useEffect(() => {
     db.settings.get().then(s => {
@@ -58,42 +60,47 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
 
       // Calculate final bill with resolved customer data
       const now = Date.now();
-      let gameTimeCost = 0;
+      let calculatedGameCost = 0;
       let usedMins = 0;
 
       if (session.combo_id) {
-        gameTimeCost = session.base_amount || 0;
+        calculatedGameCost = session.base_amount || 0;
       } else {
         const customerFreeMinutes = currentCust ? currentCust.available_minutes : 0;
         const prepaidMinutes = session.prepaid_duration_mins || 0;
         const totalFreeMinutes = customerFreeMinutes + prepaidMinutes;
         
         const res = calculateDynamicCost(Number(session.start_time), now, station, rules, totalFreeMinutes, session.num_players);
-        gameTimeCost = (session.base_amount || 0) + res.cost;
+        calculatedGameCost = (session.base_amount || 0) + res.cost;
         usedMins = Math.max(0, res.minutesUsed - prepaidMinutes);
       }
 
       const extMins = session.extended_minutes || 0;
       if (extMins > 0) {
-        gameTimeCost += (extMins / 60) * station.hourly_rate;
+        calculatedGameCost += (extMins / 60) * station.hourly_rate;
       }
 
       setMinutesUsed(usedMins);
       const foodCost = session.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0);
       const totalMins = Math.ceil((now - Number(session.start_time)) / 60000);
 
+      const effectiveGameCost = isManualOverride && manualGameCost !== '' ? Number(manualGameCost) || 0 : calculatedGameCost;
+      if (!isManualOverride) {
+        setManualGameCost(calculatedGameCost.toFixed(2));
+      }
+
       setBill(prev => ({
         ...prev,
         gameMinutes: totalMins,
-        gameTime: gameTimeCost,
+        gameTime: effectiveGameCost,
         food: foodCost,
-        subtotal: gameTimeCost + foodCost,
-        total: gameTimeCost + foodCost - prev.discount
+        subtotal: effectiveGameCost + foodCost,
+        total: effectiveGameCost + foodCost - prev.discount
       }));
     };
 
     init();
-  }, [session, station, rules]);
+  }, [session, station, rules, isManualOverride, manualGameCost]);
 
   useEffect(() => {
     const ptsDiscount = pointsToRedeem / conversionRate;
@@ -256,37 +263,66 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
           </DialogHeader>
           
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-            <div className="bg-muted/50 p-4 rounded-lg space-y-2 font-mono text-sm border border-white/5 shadow-inner">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Gaming Time</span>
-                <span>₹ {bill.gameTime.toFixed(2)}</span>
+            <div className="bg-muted/50 p-4 rounded-lg space-y-3 font-mono text-sm border border-white/5 shadow-inner">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-muted-foreground font-sans font-medium text-xs">Gaming Time ({bill.gameMinutes} mins)</span>
+                  <span className="text-[10px] text-zinc-500 font-sans">
+                    {isManualOverride ? 'Manual override active' : 'Calculated standard rate'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground text-xs">₹</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={manualGameCost}
+                    onChange={(e) => {
+                      setIsManualOverride(true);
+                      setManualGameCost(e.target.value);
+                    }}
+                    className="w-24 h-7 text-right bg-background border-white/10 font-mono text-sm font-semibold text-foreground px-2"
+                  />
+                  {isManualOverride && (
+                    <button
+                      type="button"
+                      onClick={() => setIsManualOverride(false)}
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-sans underline ml-1"
+                      title="Reset to calculated rate"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
+
               {minutesUsed > 0 && (
-                <div className="flex justify-between text-indigo-400">
+                <div className="flex justify-between text-indigo-400 text-xs">
                   <span>Time Credit Applied</span>
                   <span>- {minutesUsed} mins</span>
                 </div>
               )}
               {session?.orders.map((o, i) => (
-                <div key={i} className="flex justify-between">
+                <div key={i} className="flex justify-between text-xs">
                   <span className="text-muted-foreground">{o.quantity}x {o.name}</span>
                   <span>₹ {(o.price_at_order * o.quantity).toFixed(2)}</span>
                 </div>
               ))}
               {pointsToRedeem > 0 && (
-                 <div className="flex justify-between text-emerald-500">
+                 <div className="flex justify-between text-emerald-500 text-xs">
                    <span>Points Discount</span>
                    <span>- ₹ {bill.discount.toFixed(2)}</span>
                  </div>
               )}
               {bill.specialDiscountAmt > 0 && (
-                 <div className="flex justify-between text-emerald-500">
+                 <div className="flex justify-between text-emerald-500 text-xs">
                    <span>Special Day Discount</span>
                    <span>- ₹ {bill.specialDiscountAmt.toFixed(2)}</span>
                  </div>
               )}
               {bill.customDiscountAmt > 0 && (
-                 <div className="flex justify-between text-emerald-500">
+                 <div className="flex justify-between text-emerald-500 text-xs">
                    <span>Custom Discount</span>
                    <span>- ₹ {bill.customDiscountAmt.toFixed(2)}</span>
                  </div>
@@ -339,6 +375,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="0">None (0%)</SelectItem>
+                    <SelectItem value="5">5% Off</SelectItem>
                     <SelectItem value="10">10% Off</SelectItem>
                     <SelectItem value="20">20% Off</SelectItem>
                   </SelectContent>

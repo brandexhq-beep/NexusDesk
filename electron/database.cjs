@@ -74,22 +74,23 @@ function runSaraGamingSeed() {
   ];
 
   const seedGames = [
-    { seed_id: 'game-asphalt-legends',             name: 'Asphalt Legends',              category: 'MULTIPLAYER',  total_copies: 1, active: true },
+    { seed_id: 'game-asphalt-legends',             name: 'Asphalt Legends',              category: 'MULTIPLAYER',  total_copies: 3, active: true },
     { seed_id: 'game-mortal-kombat-1',             name: 'Mortal Kombat 1',              category: 'MULTIPLAYER',  total_copies: 1, active: true },
-    { seed_id: 'game-mortal-kombat-2',             name: 'Mortal Kombat 2',              category: 'MULTIPLAYER',  total_copies: 1, active: true },
-    { seed_id: 'game-fc-26',                       name: 'FC 26',                        category: 'MULTIPLAYER',  total_copies: 1, active: true },
-    { seed_id: 'game-wwe-2k26',                    name: 'WWE 2K26',                     category: 'MULTIPLAYER',  total_copies: 1, active: true },
-    { seed_id: 'game-split-fiction',               name: 'Split Fiction',                category: 'MULTIPLAYER',  total_copies: 1, active: true },
+    { seed_id: 'game-mortal-kombat-2',             name: 'Mortal Kombat 2',              category: 'MULTIPLAYER',  total_copies: 2, active: true },
+    { seed_id: 'game-fc-26',                       name: 'FC 26',                        category: 'MULTIPLAYER',  total_copies: 2, active: true },
+    { seed_id: 'game-wwe-2k26',                    name: 'WWE 2K26',                     category: 'MULTIPLAYER',  total_copies: 3, active: true },
+    { seed_id: 'game-split-fiction',               name: 'Split Fiction',                category: 'MULTIPLAYER',  total_copies: 3, active: true },
     { seed_id: 'game-sackboy',                     name: 'Sackboy',                      category: 'MULTIPLAYER',  total_copies: 1, active: true },
-    { seed_id: 'game-gran-turismo-7',              name: 'Gran Turismo 7',               category: 'MULTIPLAYER',  total_copies: 1, active: true },
+    { seed_id: 'game-gran-turismo-7',              name: 'Gran Turismo 7',               category: 'MULTIPLAYER',  total_copies: 2, active: true },
     { seed_id: 'game-it-takes-two',                name: 'It Takes Two',                 category: 'MULTIPLAYER',  total_copies: 1, active: true },
     { seed_id: 'game-unravel-two',                 name: 'Unravel Two',                  category: 'MULTIPLAYER',  total_copies: 1, active: true },
     { seed_id: 'game-a-way-out',                   name: 'A Way Out',                    category: 'MULTIPLAYER',  total_copies: 1, active: true },
-    { seed_id: 'game-gta-5',                       name: 'GTA 5',                        category: 'SINGLE PLAYER',total_copies: 1, active: true },
-    { seed_id: 'game-ghost-of-yotei',              name: 'Ghost of Yotei',               category: 'SINGLE PLAYER',total_copies: 1, active: true },
+    { seed_id: 'game-motogp',                      name: 'MotoGP',                       category: 'MULTIPLAYER',  total_copies: 1, active: true },
+    { seed_id: 'game-gta-5',                       name: 'GTA 5',                        category: 'SINGLE PLAYER',total_copies: 3, active: true },
+    { seed_id: 'game-ghost-of-yotei',              name: 'Ghost of Yōtei',               category: 'SINGLE PLAYER',total_copies: 2, active: true },
     { seed_id: 'game-uncharted',                   name: 'Uncharted',                    category: 'SINGLE PLAYER',total_copies: 1, active: true },
-    { seed_id: 'game-god-of-war-ragnarok',         name: 'God of War Ragnarök',          category: 'SINGLE PLAYER',total_copies: 1, active: true },
-    { seed_id: 'game-spider-man-2',                name: 'Spider-Man 2',                 category: 'SINGLE PLAYER',total_copies: 1, active: true },
+    { seed_id: 'game-god-of-war-ragnarok',         name: 'God of War',                   category: 'SINGLE PLAYER',total_copies: 2, active: true },
+    { seed_id: 'game-spider-man-2',                name: 'Spider-Man 2',                 category: 'SINGLE PLAYER',total_copies: 2, active: true },
     { seed_id: 'game-horizon-call-of-the-mountain',name: 'Horizon Call of the Mountain', category: 'VR GAMES',     total_copies: 1, active: true },
     { seed_id: 'game-forza-horizon-5',             name: 'Forza Horizon 5',              category: 'SIM RACING',   total_copies: 1, active: true },
     { seed_id: 'game-assetto-corsa',               name: 'Assetto Corsa Competizione',   category: 'SIM RACING',   total_copies: 1, active: true },
@@ -98,7 +99,7 @@ function runSaraGamingSeed() {
   ];
 
   const existingMenu  = jsonStore.getAll('menu');
-  const existingGames = jsonStore.getAll('games');
+  let existingGames   = jsonStore.getAll('games');
 
   const menuSeedIds  = new Set(existingMenu.map(m => m.seed_id).filter(Boolean));
   for (const item of seedMenu) {
@@ -113,6 +114,130 @@ function runSaraGamingSeed() {
     if (!gameSeedIds.has(game.seed_id)) {
       game.id = crypto.randomUUID();
       jsonStore.add('games', game);
+    }
+  }
+
+  // Refresh existingGames after adding
+  existingGames = jsonStore.getAll('games');
+  const getGameIdBySeedOrName = (seedId, fallbackName) => {
+    const found = existingGames.find(g => g.seed_id === seedId || (fallbackName && g.name.toLowerCase() === fallbackName.toLowerCase()));
+    return found ? found.id : null;
+  };
+
+  // Build matrix game IDs
+  const u3GameSeeds = [
+    'game-wwe-2k26',
+    'game-asphalt-legends',
+    'game-split-fiction',
+    'game-gta-5',
+    'game-god-of-war-ragnarok',
+    'game-spider-man-2',
+    'game-ghost-of-yotei',
+    'game-mortal-kombat-2',
+    'game-fc-26',
+    'game-unravel-two' // Unique
+  ];
+
+  const u4GameSeeds = [
+    'game-wwe-2k26',
+    'game-asphalt-legends',
+    'game-split-fiction',
+    'game-gta-5',
+    'game-god-of-war-ragnarok',
+    'game-spider-man-2',
+    'game-ghost-of-yotei',
+    'game-gran-turismo-7',
+    'game-it-takes-two', // Unique
+    'game-uncharted' // Unique
+  ];
+
+  const u5GameSeeds = [
+    'game-wwe-2k26',
+    'game-asphalt-legends',
+    'game-split-fiction',
+    'game-gta-5',
+    'game-gran-turismo-7',
+    'game-mortal-kombat-2',
+    'game-fc-26',
+    'game-mortal-kombat-1', // Unique
+    'game-a-way-out', // Unique
+    'game-motogp' // Unique
+  ];
+
+  const resolveIds = (seedList) => seedList.map(s => getGameIdBySeedOrName(s)).filter(Boolean);
+
+  const ps5Rates = { 1: 200, 2: 280, 3: 380, 4: 450 };
+  const existingStations = jsonStore.getAll('stations');
+
+  // Seed default Unit 4 and Unit 5 if missing
+  const unit4Exists = existingStations.some(s => s.name?.toLowerCase().includes('unit 4'));
+  const unit5Exists = existingStations.some(s => s.name?.toLowerCase().includes('unit 5'));
+
+  if (!unit4Exists) {
+    jsonStore.add('stations', {
+      id: crypto.randomUUID(),
+      name: 'PS5 Unit 4',
+      type: 'ps5',
+      hourly_rate: 200,
+      status: 'free',
+      overtime_block_minutes: 15,
+      grace_period_minutes: 5,
+      player_rates: ps5Rates,
+      installed_games: resolveIds(u4GameSeeds)
+    });
+  }
+
+  if (!unit5Exists) {
+    jsonStore.add('stations', {
+      id: crypto.randomUUID(),
+      name: 'PS5 Unit 5',
+      type: 'ps5',
+      hourly_rate: 200,
+      status: 'free',
+      overtime_block_minutes: 15,
+      grace_period_minutes: 5,
+      player_rates: ps5Rates,
+      installed_games: resolveIds(u5GameSeeds)
+    });
+  }
+
+  // Ensure default stations have their games installed if not yet customized
+  const currentStations = jsonStore.getAll('stations');
+  for (const st of currentStations) {
+    const nameLower = (st.name || '').toLowerCase();
+    // Only backfill if installed_games is null/empty, preserving user customization
+    if (!st.installed_games || st.installed_games.length === 0) {
+      let updatedInstalled = null;
+
+      if (nameLower.includes('unit 3') || (st.id === '3' && st.type.startsWith('ps5'))) {
+        updatedInstalled = resolveIds(u3GameSeeds);
+      } else if (nameLower.includes('unit 4') || (st.id === '4' && st.type.startsWith('ps5'))) {
+        updatedInstalled = resolveIds(u4GameSeeds);
+      } else if (nameLower.includes('unit 5') || (st.id === '5' && st.type.startsWith('ps5'))) {
+        updatedInstalled = resolveIds(u5GameSeeds);
+      } else if (nameLower.includes('unit 1') || st.id === '1') {
+        updatedInstalled = resolveIds([
+          'game-wwe-2k26',
+          'game-asphalt-legends',
+          'game-split-fiction',
+          'game-gta-5',
+          'game-fc-26',
+          'game-mortal-kombat-2'
+        ]);
+      } else if (nameLower.includes('unit 2') || st.id === '2') {
+        updatedInstalled = resolveIds([
+          'game-wwe-2k26',
+          'game-asphalt-legends',
+          'game-split-fiction',
+          'game-gta-5',
+          'game-fc-26',
+          'game-mortal-kombat-2'
+        ]);
+      }
+
+      if (updatedInstalled && updatedInstalled.length > 0) {
+        jsonStore.update('stations', st.id, { installed_games: updatedInstalled });
+      }
     }
   }
 

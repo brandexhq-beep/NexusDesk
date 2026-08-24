@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { db, whatsapp } from '../services/db';
-import type { Station, Session, PricingRule, Customer } from '../types';
+import type { Station, Session, PricingRule, Customer, Game } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Gamepad2, Play, Square, Plus, CalendarDays, Bell } from 'lucide-react';
+import { Gamepad2, Play, Square, Plus, CalendarDays, Bell, Users } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { StartSessionModal } from '../components/StartSessionModal';
 import { StopSessionModal } from '../components/StopSessionModal';
@@ -13,6 +13,7 @@ import { AddFoodModal } from '../components/AddFoodModal';
 export function Dashboard() {
   const [stations, setStations] = useState<Station[]>([]);
   const [rules, setRules] = useState<PricingRule[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
   const [startModalStation, setStartModalStation] = useState<Station | null>(null);
   const [stopModalSession, setStopModalSession] = useState<{station: Station, session: Session} | null>(null);
@@ -28,12 +29,14 @@ export function Dashboard() {
 
   const loadData = async () => {
     setLoading(true);
-    const [stationsData, rulesData] = await Promise.all([
+    const [stationsData, rulesData, gamesData] = await Promise.all([
       db.stations.getAll(),
-      db.pricingRules.getAll()
+      db.pricingRules.getAll(),
+      db.games.getAll()
     ]);
     setStations(stationsData);
     setRules(rulesData);
+    setGames(gamesData);
     setLoading(false);
   };
 
@@ -69,6 +72,7 @@ export function Dashboard() {
               key={station.id} 
               station={station} 
               rules={rules}
+              allGames={games}
               now={currentTime.getTime()}
               onStartClick={() => setStartModalStation(station)} 
               onStopClick={(session) => setStopModalSession({station, session})}
@@ -101,7 +105,23 @@ export function Dashboard() {
   );
 }
 
-function StationCard({ station, rules, now, onStartClick, onStopClick, onAddFoodClick }: { station: Station, rules: PricingRule[], now: number, onStartClick: () => void, onStopClick: (session: Session) => void, onAddFoodClick: (session: Session) => void }) {
+function StationCard({ 
+  station, 
+  rules, 
+  allGames, 
+  now, 
+  onStartClick, 
+  onStopClick, 
+  onAddFoodClick 
+}: { 
+  station: Station, 
+  rules: PricingRule[], 
+  allGames: Game[], 
+  now: number, 
+  onStartClick: () => void, 
+  onStopClick: (session: Session) => void, 
+  onAddFoodClick: (session: Session) => void 
+}) {
   const isOccupied = station.status === 'occupied';
   const isMaintenance = station.status === 'maintenance';
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -192,6 +212,15 @@ function StationCard({ station, rules, now, onStartClick, onStopClick, onAddFood
     }
   };
 
+  // Resolve selected running games
+  const runningGames = (activeSession?.game_ids || []).map(id => {
+    return allGames.find(g => g.id === id)?.name || 'Game';
+  });
+
+  const installedGameNames = (station.installed_games || []).map(id => {
+    return allGames.find(g => g.id === id)?.name;
+  }).filter(Boolean);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -227,10 +256,49 @@ function StationCard({ station, rules, now, onStartClick, onStopClick, onAddFood
           </div>
         </CardHeader>
         
-        <CardContent className="flex-1 py-4">
+        <CardContent className="flex-1 py-4 flex flex-col justify-between">
           {isOccupied ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
+            <div className="space-y-3">
+              {/* Selected / Running Game Display */}
+              {runningGames.length > 0 ? (
+                <div className="p-2.5 rounded-lg bg-cyan-950/40 border border-cyan-500/30 flex flex-col gap-1.5 shadow-sm shadow-cyan-950/50">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-cyan-300">
+                    <span className="flex items-center gap-1.5 tracking-wider uppercase font-mono text-[10px]">
+                      <Gamepad2 className="w-3.5 h-3.5 text-cyan-400" />
+                      Running Game
+                    </span>
+                    {activeSession?.num_players ? (
+                      <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-200 font-mono">
+                        <Users className="w-3 h-3 text-cyan-400" /> {activeSession.num_players}P
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-0.5">
+                    {runningGames.map((gameName, idx) => (
+                      <span 
+                        key={idx} 
+                        className="px-2.5 py-1 text-xs font-bold rounded-md bg-gradient-to-r from-cyan-500 to-emerald-500 text-black shadow-md shadow-cyan-500/20 tracking-wide flex items-center gap-1"
+                      >
+                        {gameName}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2 rounded-md bg-white/5 border border-white/5 flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Gamepad2 className="w-3.5 h-3.5 opacity-60" />
+                    No Game Tagged
+                  </span>
+                  {activeSession?.num_players ? (
+                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Users className="w-3 h-3" /> {activeSession.num_players}P
+                    </span>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-1">
                 <span className="text-muted-foreground text-sm font-medium">Session Time</span>
                 <span className="font-mono text-xl font-bold tracking-tight text-white">{elapsed}</span>
               </div>
@@ -243,9 +311,17 @@ function StationCard({ station, rules, now, onStartClick, onStopClick, onAddFood
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col justify-center items-center text-muted-foreground py-6">
+            <div className="h-full flex flex-col justify-center items-center text-muted-foreground py-3">
               <span className="text-2xl font-light mb-1 text-white">₹ {station.hourly_rate}</span>
               <span className="text-xs uppercase tracking-wider">Per Hour</span>
+
+              {installedGameNames.length > 0 && (
+                <div className="mt-3 text-center">
+                  <span className="text-[11px] text-cyan-400/80 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full font-medium">
+                    {installedGameNames.length} games installed
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

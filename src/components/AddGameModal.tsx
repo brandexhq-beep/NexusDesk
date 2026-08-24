@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
+import type { Station } from '../types';
 
 interface AddGameModalProps {
   open: boolean;
@@ -17,6 +18,14 @@ export function AddGameModal({ open, onClose, onAdd }: AddGameModalProps) {
   const [category, setCategory] = useState('');
   const [active, setActive] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [stations, setStations] = useState<Station[]>([]);
+  const [selectedStationIds, setSelectedStationIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (open) {
+      db.stations.getAll().then(setStations);
+    }
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,13 +40,26 @@ export function AddGameModal({ open, onClose, onAdd }: AddGameModalProps) {
         payload.category = category.trim();
       }
       
-      await db.games.add(payload);
+      const newGame = await db.games.add(payload);
+      
+      // Update stations if any selected
+      if (selectedStationIds.length > 0 && newGame?.id) {
+        for (const st of stations) {
+          const isSelected = selectedStationIds.includes(st.id);
+          const currentList = st.installed_games || [];
+          if (isSelected && !currentList.includes(newGame.id)) {
+            await db.stations.update(st.id, { installed_games: [...currentList, newGame.id] });
+          }
+        }
+      }
+
       onAdd();
       onClose();
       setName('');
       setCopies('1');
       setCategory('');
       setActive(true);
+      setSelectedStationIds([]);
     } catch (error) {
       console.error(error);
     } finally {
@@ -88,11 +110,35 @@ export function AddGameModal({ open, onClose, onAdd }: AddGameModalProps) {
             />
           </div>
 
+          <div className="space-y-2">
+            <Label>Install on Stations (Optional)</Label>
+            <p className="text-[11px] text-muted-foreground">Select which station units have this game installed.</p>
+            <div className="grid grid-cols-2 gap-2 border border-white/10 rounded-lg p-2.5 bg-black/20 max-h-32 overflow-y-auto">
+              {stations.map(st => (
+                <label key={st.id} className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={selectedStationIds.includes(st.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedStationIds(prev => [...prev, st.id]);
+                      } else {
+                        setSelectedStationIds(prev => prev.filter(id => id !== st.id));
+                      }
+                    }}
+                    className="w-3.5 h-3.5 accent-indigo-600 rounded bg-background border-border cursor-pointer"
+                  />
+                  <span className="truncate">{st.name}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-background/50">
             <div className="space-y-0.5 flex-1">
               <Label className="text-base cursor-pointer" htmlFor="active-status">Active Status</Label>
               <div className="text-sm text-muted-foreground">
-                Is this game currently available?
+                Is this game currently active and playable?
               </div>
             </div>
             <input 
@@ -108,7 +154,7 @@ export function AddGameModal({ open, onClose, onAdd }: AddGameModalProps) {
             <Button type="button" variant="outline" onClick={onClose} className="border-border">
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="bg-indigo-600 hover:bg-indigo-700 text-white">
               {loading ? 'Adding...' : 'Add Game'}
             </Button>
           </DialogFooter>

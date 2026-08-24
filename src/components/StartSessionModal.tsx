@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
 import type { Station, Customer, MenuItem, Game } from '../types';
-import { X } from 'lucide-react';
 import { calculateDynamicCost } from '../lib/pricing';
 
 interface StartSessionModalProps {
@@ -43,9 +42,20 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
       Promise.all([db.games.getAll(), db.sessions.getAll()]).then(([allGames, allSessions]) => {
         const activeSessions = allSessions.filter(s => s.status === 'active');
         
-        const stationGames = station.installed_games 
-          ? allGames.filter(g => station.installed_games!.includes(g.id))
-          : allGames;
+        let stationGames: Game[] = [];
+        const installed = station.installed_games || [];
+        const activeGames = allGames.filter(g => g.active !== false);
+
+        if (installed.length > 0) {
+          stationGames = activeGames.filter(g => 
+            installed.includes(g.id) || 
+            (g.seed_id && installed.includes(g.seed_id)) ||
+            installed.some(instId => instId.toLowerCase() === g.name.toLowerCase())
+          );
+        } else {
+          // If station has no games installed or empty installed_games
+          stationGames = [];
+        }
 
         const availableGames = stationGames.map(game => {
           const inUse = activeSessions.reduce((count, s) => {
@@ -273,42 +283,76 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
             </div>
           )}
           
-          {games.length > 0 && (
-            <div className="space-y-2 pt-2 border-t border-white/10">
-              <Label>Attach Games (Optional)</Label>
-              <div className="flex flex-wrap gap-2">
+          <div className="space-y-2 pt-2 border-t border-white/10">
+            <div className="flex justify-between items-center">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium text-foreground">Select Game (Optional)</Label>
+                <p className="text-[11px] text-muted-foreground">Select what game will be played on this unit</p>
+              </div>
+              {selectedGameIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedGameIds([])}
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
+                >
+                  Clear ({selectedGameIds.length})
+                </button>
+              )}
+            </div>
+
+            {games.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1.5 bg-black/30 rounded-lg border border-white/10">
                 {games.map(g => {
                   const isSelected = selectedGameIds.includes(g.game.id);
-                  const canSelect = g.available > 0 || isSelected;
-                  
-                  if (!canSelect && !isSelected) return null;
+                  const isAvailable = g.available > 0 || isSelected;
                   
                   return (
                     <button
                       key={g.game.id}
                       type="button"
-                      disabled={!canSelect}
+                      disabled={!isAvailable}
                       onClick={() => {
                         if (isSelected) {
                           setSelectedGameIds(prev => prev.filter(id => id !== g.game.id));
                         } else {
-                          setSelectedGameIds(prev => [...prev, g.game.id]);
+                          setSelectedGameIds([g.game.id]); // Single-click to select active game
                         }
                       }}
-                      className={`px-3 py-1.5 rounded-md text-sm transition-all border flex items-center gap-1 ${
+                      className={`relative text-left p-2.5 rounded-lg border transition-all flex flex-col justify-between gap-1.5 ${
                         isSelected 
-                          ? 'bg-indigo-500 text-white border-indigo-600' 
-                          : 'bg-black/20 text-muted-foreground border-white/10 hover:bg-white/10'
+                          ? 'bg-indigo-600/30 border-indigo-500 shadow-md shadow-indigo-500/20 text-white' 
+                          : isAvailable 
+                            ? 'bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:border-white/20 hover:text-white'
+                            : 'opacity-40 bg-black/20 border-transparent cursor-not-allowed text-zinc-500'
                       }`}
                     >
-                      {g.game.name}
-                      {isSelected && <X className="w-3 h-3 ml-1" />}
+                      <div className="flex items-start justify-between gap-1">
+                        <span className="font-semibold text-xs leading-snug line-clamp-2">{g.game.name}</span>
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0 mt-1 shadow-sm shadow-indigo-400" />
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className={isSelected ? 'text-indigo-200' : 'text-zinc-400'}>
+                          {isSelected ? 'Selected' : (isAvailable ? 'Available' : 'In Use')}
+                        </span>
+                        {g.game.category && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 uppercase tracking-wider font-mono opacity-70">
+                            {g.game.category.toLowerCase().includes('multi') ? 'MP' : 'SP'}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="p-4 rounded-lg bg-black/20 border border-white/5 text-center text-xs text-muted-foreground">
+                No games installed on this station. You can configure installed games under Station Settings.
+              </div>
+            )}
+          </div>
         </div>
         )}
 

@@ -18,23 +18,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const isAuth = await api.auth.check();
-      setIsAuthenticated(isAuth);
-      setLoading(false);
+      try {
+        if (api?.auth?.check) {
+          const isAuth = await api.auth.check();
+          setIsAuthenticated(isAuth);
+        } else {
+          // Running in browser dev mode without electron preload
+          setIsAuthenticated(true);
+        }
+      } catch (err) {
+        console.warn('Auth check fallback:', err);
+        setIsAuthenticated(true);
+      } finally {
+        setLoading(false);
+      }
     };
     checkAuth();
   }, []);
 
   const login = async (password: string) => {
-    const success = await api.auth.login(password);
-    if (success) {
-      setIsAuthenticated(true);
+    if (api?.auth?.login) {
+      const success = await api.auth.login(password);
+      if (success) {
+        setIsAuthenticated(true);
+      }
+      return success;
     }
-    return success;
+    setIsAuthenticated(true);
+    return true;
   };
 
   const logout = async () => {
-    await api.auth.logout();
+    if (api?.auth?.logout) {
+      await api.auth.logout();
+    }
     setIsAuthenticated(false);
   };
 
