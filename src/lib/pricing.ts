@@ -49,19 +49,30 @@ export function calculateDynamicCost(
     return { cost: 0, minutesUsed };
   }
 
-  // Hardcoded PS5 Pricing Matrix Override
-  if (station.type.startsWith('ps5')) {
+  // Dynamic PS5 / Multi-player Pricing Matrix Calculation
+  if (station.type.startsWith('ps5') || station.player_rates) {
     const players = Math.min(Math.max(1, numPlayers), 4);
+    const customHourly = station.player_rates?.[players] || (players === 1 ? station.hourly_rate : null);
+    const defaultHourly = PS5_PRICING_MATRIX[60][players] || 200;
+    const effectiveHourly = customHourly || defaultHourly;
+
     const hours = Math.floor(billableMins / 60);
     const remainingMins = billableMins % 60;
     
-    let totalCost = hours * PS5_PRICING_MATRIX[60][players];
+    let totalCost = hours * effectiveHourly;
     
     if (remainingMins > 0) {
       // Find the next available 5-min chunk
       const chunks = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
       const matchedChunk = chunks.find(c => c >= remainingMins) || 60;
-      totalCost += PS5_PRICING_MATRIX[matchedChunk][players];
+
+      if (customHourly && customHourly !== defaultHourly) {
+        const defaultChunk = PS5_PRICING_MATRIX[matchedChunk]?.[players] || (matchedChunk / 60) * defaultHourly;
+        const ratio = customHourly / defaultHourly;
+        totalCost += Math.round(defaultChunk * ratio);
+      } else {
+        totalCost += PS5_PRICING_MATRIX[matchedChunk]?.[players] || Math.round((matchedChunk / 60) * effectiveHourly);
+      }
     }
     
     return { cost: totalCost, minutesUsed };

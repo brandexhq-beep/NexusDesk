@@ -66,13 +66,13 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
       if (session.combo_id) {
         calculatedGameCost = session.base_amount || 0;
       } else {
-        const customerFreeMinutes = currentCust ? currentCust.available_minutes : 0;
+        const customerFreeMinutes = currentCust ? (currentCust.available_minutes || 0) : 0;
         const prepaidMinutes = session.prepaid_duration_mins || 0;
         const totalFreeMinutes = customerFreeMinutes + prepaidMinutes;
         
         const res = calculateDynamicCost(Number(session.start_time), now, station, rules, totalFreeMinutes, session.num_players);
         calculatedGameCost = (session.base_amount || 0) + res.cost;
-        usedMins = Math.max(0, res.minutesUsed - prepaidMinutes);
+        usedMins = Math.max(0, Math.min(customerFreeMinutes, res.minutesUsed - prepaidMinutes));
       }
 
       const extMins = session.extended_minutes || 0;
@@ -95,7 +95,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         gameTime: effectiveGameCost,
         food: foodCost,
         subtotal: effectiveGameCost + foodCost,
-        total: effectiveGameCost + foodCost - prev.discount
+        total: Math.max(0, effectiveGameCost + foodCost - prev.discount)
       }));
     };
 
@@ -144,14 +144,19 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
 
       // 3. Handle Customer tab/wallet
       if (customer) {
-        let newWalletBalance = customer.wallet_balance;
+        let newWalletBalance = customer.wallet_balance || 0;
+        let transactionNote = `Session at ${station.name}`;
 
         if (paymentMode === 'wallet') {
           if (customer.wallet_balance >= bill.total) {
             newWalletBalance = customer.wallet_balance - bill.total;
+            transactionNote = `Session at ${station.name} (Wallet)`;
           } else {
+            const walletPaid = customer.wallet_balance;
+            const cashRemainder = bill.total - walletPaid;
             newWalletBalance = 0;
-            // They shouldn't get debt. The rest is assumed paid in cash.
+            const sym = settings?.currency_symbol || '₹';
+            transactionNote = `Session at ${station.name} (Split: ${sym}${walletPaid} Wallet + ${sym}${cashRemainder} Cash/UPI)`;
           }
         }
         
@@ -160,7 +165,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
           type: 'session_charge',
           amount: bill.total,
           points: Math.floor(bill.total / 10), 
-          note: `Session at ${station.name}`,
+          note: transactionNote,
           session_id: session.id
         });
 
@@ -175,11 +180,13 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
           });
         }
 
-        const newLoyaltyPoints = customer.loyalty_points + Math.floor(bill.total / 10) - pointsToRedeem;
+        const newLoyaltyPoints = Math.max(0, (customer.loyalty_points || 0) + Math.floor(bill.total / 10) - pointsToRedeem);
+        const remainingMinutes = Math.max(0, (customer.available_minutes || 0) - minutesUsed);
+
         await db.customers.update(customer.id, { 
           wallet_balance: Math.max(0, newWalletBalance),
           loyalty_points: newLoyaltyPoints,
-          available_minutes: Math.max(0, customer.available_minutes - minutesUsed),
+          available_minutes: remainingMinutes,
           loyalty_points_updated_at: Date.now(),
           loyalty_reminder_sent: false
         });
@@ -236,6 +243,16 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
             scheduled_for: Date.now() + (settings ? (settings.review_delay_mins || 30) : 30) * 60 * 1000,
           });
         }
+      } else {
+        // Log transaction for walk-in session
+        await db.transactions.add({
+          customer_id: null as any,
+          type: 'session_charge',
+          amount: bill.total,
+          points: 0,
+          note: `Walk-in Session at ${station.name} (${paymentMode.toUpperCase()})`,
+          session_id: session.id
+        });
       }
 
       onStop();

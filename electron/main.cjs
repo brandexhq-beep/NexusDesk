@@ -60,8 +60,8 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   
-  // Support private repositories using GH_TOKEN (or packaged fallback token)
-  const ghToken = process.env.GH_TOKEN || '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';
+  // Support private repositories using GH_TOKEN if provided
+  const ghToken = process.env.GH_TOKEN;
   if (ghToken) {
     autoUpdater.requestHeaders = { "Authorization": `bearer ${ghToken}` };
   }

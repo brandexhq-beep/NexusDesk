@@ -37,11 +37,15 @@ export function Reports() {
     let todayRev = 0;
     let monthRev = 0;
 
+    const formatDateKey = (d: Date) => 
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const weekData = Array.from({length: 7}).map((_, i) => {
-      const d = new Date(now.getTime() - (6 - i) * 24 * 60 * 60 * 1000);
+    const weekData = Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (6 - i));
       return {
         name: days[d.getDay()],
+        dateKey: formatDateKey(d),
         gaming: 0,
         food: 0,
         date: d.getDate()
@@ -68,8 +72,8 @@ export function Reports() {
       if (end >= todayStart) todayRev += s.total_amount;
       if (end >= monthStart) monthRev += s.total_amount;
       
-      const sDate = new Date(end).getDate();
-      const weekDay = weekData.find(w => w.date === sDate);
+      const sKey = formatDateKey(new Date(end));
+      const weekDay = weekData.find(w => w.dateKey === sKey);
       if (weekDay) {
          const foodCost = s.orders ? s.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0) : 0;
          weekDay.gaming += Math.max(0, s.total_amount - foodCost);
@@ -103,8 +107,8 @@ export function Reports() {
         const time = Number(t.timestamp);
         if (time >= todayStart) todayRev += t.amount;
         if (time >= monthStart) monthRev += t.amount;
-        const sDate = new Date(time).getDate();
-        const weekDay = weekData.find(w => w.date === sDate);
+        const tKey = formatDateKey(new Date(time));
+        const weekDay = weekData.find(w => w.dateKey === tKey);
         if (weekDay) {
            weekDay.food += t.amount;
         }

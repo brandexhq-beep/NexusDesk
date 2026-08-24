@@ -73,6 +73,15 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
   const executeStart = async () => {
     if (!station) return;
     try {
+      // Check if station already has an active session
+      const existingSession = await db.sessions.getActiveByStation(station.id);
+      if (existingSession) {
+        alert(`Station "${station.name}" already has an active session in progress.`);
+        onStart();
+        onClose();
+        return;
+      }
+
       const selectedCombo = combos.find(c => c.id === selectedComboId);
       
       const prepaidDuration = isPrepaid ? (parseInt(prepaidHours) || 0) * 60 + (parseInt(prepaidMinutes) || 0) : null;
