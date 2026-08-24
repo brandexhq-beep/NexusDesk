@@ -159,7 +159,7 @@ export function Promotions() {
       fetchProgress();
       const interval = setInterval(fetchProgress, 5000);
       return () => clearInterval(interval);
-    }, [jobId]);
+    }, [jobId, initialTotal]);
 
     const percentage = progress.total > 0 ? Math.round(((progress.sent + progress.failed) / progress.total) * 100) : 0;
 

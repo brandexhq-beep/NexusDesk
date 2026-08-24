@@ -77,6 +77,12 @@ contextBridge.exposeInMainWorld('api', {
       delete:   (id)        => ipcRenderer.invoke('db:whatsappPromotions:delete', id),
       cancel:   (id)        => ipcRenderer.invoke('db:whatsappPromotions:cancel', id),
     },
+    backup: {
+      export:           ()                 => ipcRenderer.invoke('db:backup:export'),
+      restore:          (data)             => ipcRenderer.invoke('db:backup:restore', data),
+      writeExportFile:  (filePath, data)   => ipcRenderer.invoke('db:backup:writeExportFile', { filePath, data }),
+      readImportFile:   (filePath)         => ipcRenderer.invoke('db:backup:readImportFile', filePath),
+    },
   },
   whatsapp: {
     getStatus:   ()     => ipcRenderer.invoke('whatsapp:getStatus'),
@@ -90,15 +96,21 @@ contextBridge.exposeInMainWorld('api', {
   },
   updater: {
     // Listen for update events from main process
-    onUpdateAvailable:  (cb) => ipcRenderer.on('update_available',  (_, info) => cb(info)),
-    onUpdateDownloaded: (cb) => ipcRenderer.on('update_downloaded', (_, info) => cb(info)),
-    onUpdateProgress:   (cb) => ipcRenderer.on('update_progress',   (_, info) => cb(info)),
+    onUpdateChecking:     (cb) => ipcRenderer.on('update_checking',      () => cb()),
+    onUpdateAvailable:    (cb) => ipcRenderer.on('update_available',     (_, info) => cb(info)),
+    onUpdateNotAvailable: (cb) => ipcRenderer.on('update_not_available', (_, info) => cb(info)),
+    onUpdateProgress:     (cb) => ipcRenderer.on('update_progress',      (_, info) => cb(info)),
+    onUpdateDownloaded:   (cb) => ipcRenderer.on('update_downloaded',    (_, info) => cb(info)),
+    onUpdateError:        (cb) => ipcRenderer.on('update_error',         (_, err) => cb(err)),
     installUpdate: () => ipcRenderer.invoke('updater:installNow'),
     checkForUpdates: () => ipcRenderer.invoke('updater:checkNow'),
     removeListeners: () => {
+      ipcRenderer.removeAllListeners('update_checking');
       ipcRenderer.removeAllListeners('update_available');
+      ipcRenderer.removeAllListeners('update_not_available');
       ipcRenderer.removeAllListeners('update_downloaded');
       ipcRenderer.removeAllListeners('update_progress');
+      ipcRenderer.removeAllListeners('update_error');
     },
   },
   dialog: {

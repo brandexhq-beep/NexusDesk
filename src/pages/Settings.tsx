@@ -47,6 +47,22 @@ export function Settings() {
 
   useEffect(() => {
     loadSettings();
+
+    if ((window as any).api?.updater) {
+      updater.onUpdateNotAvailable(() => {
+        toast.success('Sara Gaming Zone is up to date!');
+        setCheckingUpdate(false);
+      });
+      updater.onUpdateAvailable((info: any) => {
+        toast.info(`Update v${info?.version} is available and downloading!`);
+        setCheckingUpdate(false);
+      });
+      updater.onUpdateError((err: any) => {
+        toast.error(`Update check: ${err?.message || 'Could not check updates'}`);
+        setCheckingUpdate(false);
+      });
+    }
+
     return () => {
       if (waIntervalRef.current) clearInterval(waIntervalRef.current);
     };
@@ -165,39 +181,111 @@ export function Settings() {
     }
   };
 
-  const handleBackup = () => {
+  const handleBackup = async () => {
     try {
-      const data = localStorage.getItem('brandex_db');
-      if (!data) return alert('No data to backup.');
-      const blob = new Blob([data], { type: 'application/json' });
+      setLoading(true);
+      toast.info('Generating database backup...');
+
+      let backupData: any = null;
+      if ((window as any).api?.db?.backup?.export) {
+        backupData = await db.backup.exportBackup();
+      } else {
+        // Web dev fallback
+        backupData = {
+          version: 1,
+          appName: 'Sara Gaming Zone',
+          exportedAt: new Date().toISOString(),
+          timestamp: Date.now(),
+          settings: await db.settings.get(),
+          stations: await db.stations.getAll(),
+          customers: await db.customers.getAll(),
+          sessions: await db.sessions.getAll(),
+          menu: await db.menu.getAll(),
+          transactions: await db.transactions.getAll(),
+          pricing_rules: await db.pricingRules.getAll(),
+          games: await db.games.getAll(),
+          expenses: await db.expenses.getAll(),
+          templates: await db.templates.getAll(),
+        };
+      }
+
+      if (!backupData) {
+        toast.error('No database data found to backup.');
+        return;
+      }
+
+      const defaultFilename = `backup_sara_gaming_${new Date().toISOString().split('T')[0]}.json`;
+
+      // If running inside Electron, use native Save Dialog
+      if ((window as any).api?.dialog?.showSaveDialog && (window as any).api?.db?.backup?.writeExportFile) {
+        const dialogRes = await (window as any).api.dialog.showSaveDialog(defaultFilename);
+        if (!dialogRes.canceled && dialogRes.filePath) {
+          const writeRes = await db.backup.writeExportFile(dialogRes.filePath, backupData);
+          if (writeRes.success) {
+            toast.success(`Backup saved successfully to ${dialogRes.filePath}`);
+            return;
+          }
+        } else {
+          return; // User cancelled
+        }
+      }
+
+      // Browser fallback download
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `backup_brandex_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = defaultFilename;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (e) {
-      alert('Backup failed.');
+      toast.success('Database backup downloaded successfully!');
+    } catch (e: any) {
+      console.error(e);
+      toast.error(`Backup failed: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    try {
+      setLoading(true);
+      toast.info('Validating and restoring database backup...');
+
+      const content = await file.text();
+      let parsed: any;
       try {
-        const content = event.target?.result as string;
-        JSON.parse(content); // Validate JSON
-        localStorage.setItem('brandex_db', content);
-        alert('Data restored successfully! The application will now reload.');
-        window.location.reload();
-      } catch (err) {
-        alert('Invalid backup file.');
+        parsed = JSON.parse(content);
+      } catch {
+        toast.error('Invalid backup file: Not valid JSON.');
+        return;
       }
-    };
-    reader.readAsText(file);
+
+      if (!parsed || typeof parsed !== 'object') {
+        toast.error('Invalid backup file structure.');
+        return;
+      }
+
+      if ((window as any).api?.db?.backup?.restore) {
+        await db.backup.restoreBackup(parsed);
+      }
+
+      toast.success('Database restored successfully! Reloading...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Restore failed: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   if (!settings) return <div className="text-muted-foreground">Loading settings...</div>;
@@ -326,16 +414,20 @@ export function Settings() {
                   toast.info('Checking for updates...');
                   try {
                     if ((window as any).api?.updater) {
-                      await updater.checkForUpdates();
-                      setTimeout(() => {
-                        toast.success('Check complete. You are using the latest version!');
+                      const res = await updater.checkForUpdates();
+                      if (res?.status === 'dev_mode') {
+                        toast.info(res.message);
                         setCheckingUpdate(false);
-                      }, 2500);
+                      } else if (res?.status === 'error') {
+                        toast.error(`Check failed: ${res.message}`);
+                        setCheckingUpdate(false);
+                      }
+                      // If res?.status === 'ok', registered event listeners handle available / not available / error
                     } else {
                       setTimeout(() => {
-                        toast.info('Automatic update check is active in packaged production builds.');
+                        toast.info('Automatic update check is active in packaged desktop builds.');
                         setCheckingUpdate(false);
-                      }, 1200);
+                      }, 1000);
                     }
                   } catch (e: any) {
                     toast.error(e?.message || 'Failed to check for updates');

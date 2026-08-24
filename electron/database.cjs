@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 const { app, ipcMain } = require('electron');
 const crypto = require('crypto');
 
@@ -119,9 +120,45 @@ function runSaraGamingSeed() {
 }
 
 // ─── Database Initialiser ─────────────────────────────────────────────────────
+function autoBackup(dbPath) {
+  try {
+    const backupDir = path.join(app.getPath('userData'), 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    // Keep last 7 days of backups
+    const files = fs.readdirSync(backupDir).filter(f => f.startsWith('database-') && f.endsWith('.sqlite'));
+    if (files.length >= 7) {
+      files.sort(); // Oldest first due to ISO date format
+      const toDelete = files.slice(0, files.length - 6);
+      for (const f of toDelete) {
+        fs.unlinkSync(path.join(backupDir, f));
+      }
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const backupFile = path.join(backupDir, `database-${today}.sqlite`);
+    
+    // Only backup if we haven't already backed up today
+    if (!fs.existsSync(backupFile) && fs.existsSync(dbPath)) {
+      fs.copyFileSync(dbPath, backupFile);
+      console.log(`[Database] Auto-backup created: ${backupFile}`);
+    }
+  } catch (err) {
+    console.error('[Database] Auto-backup failed:', err);
+  }
+}
+
 function initDatabase() {
   const dbPath = path.join(app.getPath('userData'), 'database.sqlite');
+  autoBackup(dbPath);
+  
   db = new Database(dbPath);
+  
+  // Enable WAL mode for better concurrency and crash resistance
+  db.pragma('journal_mode = WAL');
+  db.pragma('synchronous = NORMAL');
 
   // Initialize Tables
   db.exec(`
@@ -335,6 +372,75 @@ function setupIpcHandlers() {
     jsonStore.update('whatsapp_promotions', id, { status: 'cancelled', cancelledAt: Date.now() });
   });
 
+  // BACKUP & RESTORE
+  handleSafe('db:backup:export', () => {
+    return {
+      version: 1,
+      appName: 'Sara Gaming Zone',
+      exportedAt: new Date().toISOString(),
+      timestamp: Date.now(),
+      settings: db.prepare('SELECT key, value FROM settings').all(),
+      stations: jsonStore.getAll('stations'),
+      customers: jsonStore.getAll('customers'),
+      sessions: jsonStore.getAll('sessions'),
+      menu: jsonStore.getAll('menu'),
+      transactions: jsonStore.getAll('transactions'),
+      pricing_rules: jsonStore.getAll('pricing_rules'),
+      review_requests: jsonStore.getAll('review_requests'),
+      templates: jsonStore.getAll('templates'),
+      games: jsonStore.getAll('games'),
+      expenses: jsonStore.getAll('expenses'),
+      whatsapp_promotions: jsonStore.getAll('whatsapp_promotions'),
+    };
+  });
+
+  handleSafe('db:backup:restore', (_, backupData) => {
+    if (!backupData || typeof backupData !== 'object') {
+      throw new Error('Invalid backup data format.');
+    }
+
+    const restoreTx = db.transaction((data) => {
+      // Restore settings if provided
+      if (Array.isArray(data.settings)) {
+        db.prepare('DELETE FROM settings').run();
+        const insertSetting = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
+        for (const s of data.settings) {
+          if (s.key && s.value) insertSetting.run(s.key, s.value);
+        }
+      } else if (data.settings && typeof data.settings === 'object') {
+        db.prepare('DELETE FROM settings').run();
+        db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('app_settings', JSON.stringify(data.settings));
+      }
+
+      // Helper to restore jsonStore tables
+      const restoreTable = (tableName, items) => {
+        if (!Array.isArray(items)) return;
+        db.prepare(`DELETE FROM ${tableName}`).run();
+        const insertStmt = db.prepare(`INSERT INTO ${tableName} (id, data) VALUES (?, ?)`);
+        for (const item of items) {
+          if (item && item.id) {
+            insertStmt.run(String(item.id), JSON.stringify(item));
+          }
+        }
+      };
+
+      restoreTable('stations', data.stations);
+      restoreTable('customers', data.customers);
+      restoreTable('sessions', data.sessions);
+      restoreTable('menu', data.menu);
+      restoreTable('transactions', data.transactions);
+      restoreTable('pricing_rules', data.pricing_rules || data.pricingRules);
+      restoreTable('review_requests', data.review_requests || data.reviewRequests);
+      restoreTable('templates', data.templates);
+      restoreTable('games', data.games);
+      restoreTable('expenses', data.expenses);
+      restoreTable('whatsapp_promotions', data.whatsapp_promotions || data.whatsappPromotions);
+    });
+
+    restoreTx(backupData);
+    return { success: true, restoredAt: new Date().toISOString() };
+  });
+
   // AUTH
   let isAuth = false;
   ipcMain.handle('auth:login', (_, password) => {
@@ -348,4 +454,15 @@ function setupIpcHandlers() {
   ipcMain.handle('auth:logout', () => { isAuth = false; return true; });
 }
 
-module.exports = { setupIpcHandlers, jsonStore };
+function closeDatabase() {
+  if (db) {
+    try {
+      db.close();
+      console.log('[Database] Connection closed gracefully.');
+    } catch (err) {
+      console.error('[Database] Error closing connection:', err);
+    }
+  }
+}
+
+module.exports = { setupIpcHandlers, jsonStore, closeDatabase };

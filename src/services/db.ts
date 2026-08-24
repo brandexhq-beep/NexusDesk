@@ -120,6 +120,12 @@ export const db = {
     delete:  async (id: string) => api.db.whatsappPromotions.delete(id),
     cancel:  async (id: string) => api.db.whatsappPromotions.cancel(id),
   },
+  backup: {
+    exportBackup:    async () => api.db.backup.export(),
+    restoreBackup:   async (data: any) => api.db.backup.restore(data),
+    writeExportFile: async (filePath: string, data: any) => api.db.backup.writeExportFile(filePath, data),
+    readImportFile:  async (filePath: string) => api.db.backup.readImportFile(filePath),
+  },
 };
 
 export const whatsapp = {
@@ -129,10 +135,18 @@ export const whatsapp = {
 };
 
 export const updater = {
-  checkForUpdates: () => api.updater.checkForUpdates(),
-  installUpdate:   () => api.updater.installUpdate(),
-  onUpdateAvailable:  (cb: (info: any) => void) => api.updater.onUpdateAvailable(cb),
-  onUpdateDownloaded: (cb: (info: any) => void) => api.updater.onUpdateDownloaded(cb),
-  onUpdateProgress:   (cb: (info: any) => void) => api.updater.onUpdateProgress(cb),
-  removeListeners: () => api.updater.removeListeners(),
+  checkForUpdates:      () => api.updater.checkForUpdates(),
+  installUpdate:        () => api.updater.installUpdate(),
+  onUpdateChecking:     (cb: () => void) => api.updater.onUpdateChecking(cb),
+  onUpdateAvailable:    (cb: (info: any) => void) => api.updater.onUpdateAvailable(cb),
+  onUpdateNotAvailable: (cb: (info: any) => void) => api.updater.onUpdateNotAvailable(cb),
+  onUpdateDownloaded:   (cb: (info: any) => void) => api.updater.onUpdateDownloaded(cb),
+  onUpdateProgress:     (cb: (info: any) => void) => api.updater.onUpdateProgress(cb),
+  onUpdateError:        (cb: (err: any) => void) => api.updater.onUpdateError(cb),
+  removeListeners:      () => api.updater.removeListeners(),
+};
+
+export const dialog = {
+  showSaveDialog: (filename: string) => api.dialog.showSaveDialog(filename),
+  showOpenDialog: () => api.dialog.showOpenDialog(),
 };

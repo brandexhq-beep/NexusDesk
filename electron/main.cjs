@@ -1,8 +1,8 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
-const { setupIpcHandlers } = require('./database.cjs');
-const { startWhatsAppClient } = require('./whatsapp.cjs');
+const { setupIpcHandlers, closeDatabase } = require('./database.cjs');
+const { startWhatsAppClient, stopWhatsAppClient } = require('./whatsapp.cjs');
 
 let mainWindow;
 
@@ -59,38 +59,66 @@ function createWindow() {
 function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.requestHeaders = { "Authorization": `bearer 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` };
+  
+  // Use GH_TOKEN from env if present; public releases do not require Authorization header
+  if (process.env.GH_TOKEN) {
+    autoUpdater.requestHeaders = { "Authorization": `bearer ${process.env.GH_TOKEN}` };
+  }
 
   autoUpdater.on('checking-for-update', () => {
     console.log('[Updater] Checking for update...');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update_checking');
+    }
   });
 
   autoUpdater.on('update-available', (info) => {
     console.log('[Updater] Update available:', info.version);
-    if (mainWindow) mainWindow.webContents.send('update_available', info);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update_available', info);
+    }
   });
 
   autoUpdater.on('update-not-available', (info) => {
     console.log('[Updater] Already up to date:', info.version);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update_not_available', info);
+    }
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
     console.log(`[Updater] Download: ${Math.round(progressObj.percent)}%`);
-    if (mainWindow) mainWindow.webContents.send('update_progress', progressObj);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update_progress', progressObj);
+    }
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[Updater] Update downloaded, ready to install:', info.version);
-    if (mainWindow) mainWindow.webContents.send('update_downloaded', info);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update_downloaded', info);
+    }
   });
 
   autoUpdater.on('error', (err) => {
     console.error('[Updater] Error:', err.message);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update_error', { message: err.message });
+    }
   });
 
   // IPC: check for updates on demand
   ipcMain.handle('updater:checkNow', async () => {
-    try { await autoUpdater.checkForUpdates(); } catch (e) { console.error('[Updater] Check failed:', e.message); }
+    if (!app.isPackaged) {
+      return { status: 'dev_mode', message: 'Updates are enabled in packaged production builds.' };
+    }
+    try {
+      const res = await autoUpdater.checkForUpdates();
+      return { status: 'ok', updateInfo: res?.updateInfo };
+    } catch (e) {
+      console.error('[Updater] Check failed:', e.message);
+      return { status: 'error', message: e.message };
+    }
   });
 
   // IPC: install now (quit & install)
@@ -106,7 +134,9 @@ function setupAutoUpdater() {
   }
 }
 
-// ─── Backup / Restore Dialogs ────────────────────────────────────────────────
+// ─── Backup / Restore Dialogs & Filesystem ──────────────────────────────────
+const fs = require('fs');
+
 ipcMain.handle('save-backup-dialog', async (event, defaultFilename) => {
   return dialog.showSaveDialog(mainWindow, {
     title: 'Save Backup',
@@ -121,6 +151,24 @@ ipcMain.handle('open-restore-dialog', async () => {
     properties: ['openFile'],
     filters: [{ name: 'JSON Data', extensions: ['json'] }],
   });
+});
+
+ipcMain.handle('db:backup:writeExportFile', async (_, { filePath, data }) => {
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('db:backup:readImportFile', async (_, filePath) => {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    return { success: true, data: JSON.parse(raw) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
@@ -138,3 +186,37 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) createWindow();
 });
+
+let isQuitting = false;
+app.on('before-quit', async (e) => {
+  if (isQuitting) return; // Cleanup already in progress
+
+  // Block the immediate quit to do async cleanup
+  e.preventDefault();
+  isQuitting = true;
+  
+  console.log('[App] Teardown started...');
+  
+  // Emergency exit timer if cleanup hangs
+  const forceQuitTimer = setTimeout(() => {
+    console.warn('[App] Teardown timed out after 4s — forcing quit.');
+    app.exit(0);
+  }, 4000);
+
+  try {
+    await stopWhatsAppClient();
+  } catch (err) {
+    console.error('[App] Error stopping WhatsApp client:', err);
+  }
+  
+  try {
+    closeDatabase();
+  } catch (err) {
+    console.error('[App] Error closing database:', err);
+  }
+  
+  clearTimeout(forceQuitTimer);
+  console.log('[App] Teardown complete. Exiting.');
+  app.quit(); // Actually quit now
+});
+

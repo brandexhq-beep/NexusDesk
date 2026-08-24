@@ -2,6 +2,8 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { jsonStore } = require('./database.cjs');
 const crypto = require('crypto');
+const path = require('path');
+const { app } = require('electron');
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let isClientReady = false;
@@ -47,14 +49,20 @@ const DND_END_HOUR_IST = 9;   // 9 AM
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function getBrowserExecutablePath() {
     const fs = require('fs');
+    const localAppData = process.env.LOCALAPPDATA || '';
+    const programFiles = process.env.PROGRAMFILES || 'C:\\Program Files';
+    const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+
     const paths = [
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        path.join(localAppData, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     ];
     for (const p of paths) {
-        try { if (fs.existsSync(p)) return p; } catch (_) {}
+        try { if (p && fs.existsSync(p)) return p; } catch (_) {}
     }
     return null;
 }
@@ -153,8 +161,11 @@ function incrementHourlyPromo() {
 
 // ─── Build Client ─────────────────────────────────────────────────────────────
 function buildClient() {
+    const authDataPath = path.join(app.getPath('userData'), '.wwebjs_auth');
     return new Client({
-        authStrategy: new LocalAuth(),
+        authStrategy: new LocalAuth({
+            dataPath: authDataPath,
+        }),
         puppeteer: {
             headless: true,
             executablePath: getBrowserExecutablePath() || undefined,
@@ -574,4 +585,28 @@ function startWhatsAppClient(ipcMain) {
     }, 60000);
 }
 
-module.exports = { startWhatsAppClient };
+async function stopWhatsAppClient() {
+    console.log('[WhatsApp] Stopping client gracefully...');
+    isProcessingQueue = false;
+    if (queueInterval) {
+        clearInterval(queueInterval);
+        queueInterval = null;
+    }
+    if (healthInterval) {
+        clearInterval(healthInterval);
+        healthInterval = null;
+    }
+    if (client) {
+        try {
+            await client.destroy();
+            console.log('[WhatsApp] Client destroyed successfully.');
+        } catch (err) {
+            console.error('[WhatsApp] Error destroying client:', err);
+        }
+        client = null;
+    }
+    isClientReady = false;
+    clientState = 'disconnected';
+}
+
+module.exports = { startWhatsAppClient, stopWhatsAppClient };
