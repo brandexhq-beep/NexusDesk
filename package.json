@@ -1,7 +1,7 @@
 {
   "name": "gaming-cafe-management",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Gaming Cafe Management System",
   "author": "Brandex",
   "type": "module",
@@ -27,7 +27,10 @@
       ],
       "icon": "public/pwa-512x512.png"
     },
-    "asarUnpack": [],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*",
+      "**/*.node"
+    ],
     "publish": {
       "provider": "github",
       "owner": "brandexhq-beep",
