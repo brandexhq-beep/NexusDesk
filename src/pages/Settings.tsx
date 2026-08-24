@@ -58,7 +58,12 @@ export function Settings() {
         setCheckingUpdate(false);
       });
       updater.onUpdateError((err: any) => {
-        toast.error(`Update check: ${err?.message || 'Could not check updates'}`);
+        const msg = err?.message || '';
+        if (msg.includes('404') || msg.includes('releases.atom')) {
+          toast.success('Sara Gaming Zone is up to date! (No newer release found)');
+        } else {
+          toast.error(`Update check: ${msg || 'Could not check updates'}`);
+        }
         setCheckingUpdate(false);
       });
     }
@@ -419,7 +424,12 @@ export function Settings() {
                         toast.info(res.message);
                         setCheckingUpdate(false);
                       } else if (res?.status === 'error') {
-                        toast.error(`Check failed: ${res.message}`);
+                        const errMsg = res.message || '';
+                        if (errMsg.includes('404') || errMsg.includes('Cannot find') || errMsg.includes('releases.atom')) {
+                          toast.success('No new release published yet. Your application is up to date!');
+                        } else {
+                          toast.error(`Update check: ${errMsg}`);
+                        }
                         setCheckingUpdate(false);
                       }
                       // If res?.status === 'ok', registered event listeners handle available / not available / error
@@ -430,7 +440,12 @@ export function Settings() {
                       }, 1000);
                     }
                   } catch (e: any) {
-                    toast.error(e?.message || 'Failed to check for updates');
+                    const errMsg = e?.message || '';
+                    if (errMsg.includes('404') || errMsg.includes('Cannot find') || errMsg.includes('releases.atom')) {
+                      toast.success('No new release published yet. Your application is up to date!');
+                    } else {
+                      toast.error(errMsg || 'Failed to check for updates');
+                    }
                     setCheckingUpdate(false);
                   }
                 }}

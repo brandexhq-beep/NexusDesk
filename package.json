@@ -34,7 +34,8 @@
     "publish": {
       "provider": "github",
       "owner": "brandexhq-beep",
-      "repo": "NexusDesk"
+      "repo": "NexusDesk",
+      "private": true
     },
     "files": [
       "dist/**/*",

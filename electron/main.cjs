@@ -60,9 +60,10 @@ function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   
-  // Use GH_TOKEN from env if present; public releases do not require Authorization header
-  if (process.env.GH_TOKEN) {
-    autoUpdater.requestHeaders = { "Authorization": `bearer ${process.env.GH_TOKEN}` };
+  // Support private repositories using GH_TOKEN (or packaged fallback token)
+  const ghToken = process.env.GH_TOKEN || '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';
+  if (ghToken) {
+    autoUpdater.requestHeaders = { "Authorization": `bearer ${ghToken}` };
   }
 
   autoUpdater.on('checking-for-update', () => {
