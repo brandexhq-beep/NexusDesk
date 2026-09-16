@@ -4,13 +4,16 @@ import type { Customer } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { UserPlus, Phone, WalletCards, Download } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { UserPlus, Phone, WalletCards, Download, Search } from 'lucide-react';
 import { AddCustomerModal } from '../components/AddCustomerModal';
 import { AddBalanceModal } from '../components/AddBalanceModal';
 import { CustomerProfileModal } from '../components/CustomerProfileModal';
+import { fuzzySearch } from '../lib/search';
 
 export function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addBalanceCustomer, setAddBalanceCustomer] = useState<Customer | null>(null);
   const [viewProfileCustomer, setViewProfileCustomer] = useState<Customer | null>(null);
@@ -30,10 +33,17 @@ export function Customers() {
     return `${h}h ${m}m`;
   };
 
+  const filteredCustomers = fuzzySearch(customers, searchQuery, (c) => [
+    c.name,
+    c.phone,
+    c.wallet_balance,
+    c.loyalty_points
+  ]);
+
   const handleExportCSV = () => {
     if (customers.length === 0) return;
     const headers = ['Name', 'Phone', 'Time Balance (mins)', 'Wallet Balance', 'Loyalty Points'];
-    const rows = customers.map(c => [
+    const rows = filteredCustomers.map(c => [
       c.name,
       c.phone,
       c.available_minutes,
@@ -66,12 +76,21 @@ export function Customers() {
       </div>
       
       <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-card-foreground">Customer Directory</CardTitle>
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4">
+          <CardTitle className="text-card-foreground">Customer Directory ({filteredCustomers.length})</CardTitle>
+          <div className="relative w-full sm:w-72">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Fuzzy search customer name, phone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 border-border bg-background/50 text-sm"
+            />
+          </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          {customers.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No customers found.</div>
+          {filteredCustomers.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">No matching customers found.</div>
           ) : (
             <Table>
               <TableHeader>
@@ -85,7 +104,7 @@ export function Customers() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {customers.map((c) => (
+                {filteredCustomers.map((c) => (
                   <TableRow 
                     key={c.id} 
                     className="border-border hover:bg-muted/50 cursor-pointer"

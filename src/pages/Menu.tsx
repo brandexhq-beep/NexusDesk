@@ -7,10 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AddMenuItemModal } from '../components/AddMenuItemModal';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Search } from 'lucide-react';
+import { fuzzySearch } from '../lib/search';
 
 export function Menu() {
   const [items, setItems] = useState<MenuItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
 
@@ -39,6 +41,12 @@ export function Menu() {
     }
   };
 
+  const filteredItems = fuzzySearch(items, searchQuery, (item) => [
+    item.name,
+    item.category,
+    item.subcategory
+  ]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -47,8 +55,17 @@ export function Menu() {
       </div>
       
       <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-card-foreground">All Items</CardTitle>
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4">
+          <CardTitle className="text-card-foreground">All Items ({filteredItems.length})</CardTitle>
+          <div className="relative w-full sm:w-72">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Fuzzy search food menu, snacks, drinks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 border-border bg-background/50 text-sm"
+            />
+          </div>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
@@ -64,7 +81,7 @@ export function Menu() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => (
+              {filteredItems.map((item) => (
                 <TableRow key={item.id} className="border-border hover:bg-muted/50">
                   <TableCell className="font-medium text-foreground">
                     {item.name}

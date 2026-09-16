@@ -5,13 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EditStationModal } from '../components/EditStationModal';
 import { AddStationModal } from '../components/AddStationModal';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { StationHistoryModal } from '../components/StationHistoryModal';
+import { PricingChartModal } from '../components/PricingChartModal';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2, Gamepad2 } from 'lucide-react';
+import { Plus, Trash2, Gamepad2, History, BarChart3 } from 'lucide-react';
 
 export function Stations() {
   const [stations, setStations] = useState<Station[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [editingStation, setEditingStation] = useState<Station | null>(null);
+  const [historyStation, setHistoryStation] = useState<Station | null>(null);
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [stationToDelete, setStationToDelete] = useState<Station | null>(null);
 
@@ -42,11 +46,16 @@ export function Stations() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Station Configuration</h1>
-        <Button onClick={() => setIsAddModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
-          <Plus className="w-4 h-4" /> Add Station
-        </Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button onClick={() => setIsPricingModalOpen(true)} variant="outline" className="flex-1 sm:flex-none border-border gap-2">
+            <BarChart3 className="w-4 h-4 text-indigo-400" /> Pricing Chart
+          </Button>
+          <Button onClick={() => setIsAddModalOpen(true)} className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+            <Plus className="w-4 h-4" /> Add Station
+          </Button>
+        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -115,12 +124,15 @@ export function Stations() {
                 ) : null}
               </CardContent>
 
-              <div className="px-6 pb-4 pt-2 flex gap-2">
+              <div className="px-6 pb-4 pt-2 flex gap-1.5">
+                <button onClick={() => setHistoryStation(s)} className="flex-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 text-xs py-2 rounded-md transition-colors border border-indigo-500/20 flex items-center justify-center gap-1">
+                  <History className="w-3 h-3" /> History
+                </button>
                 <button onClick={() => setEditingStation(s)} className="flex-1 bg-white/5 hover:bg-white/10 text-xs py-2 rounded-md text-foreground transition-colors border border-white/5 hover:border-white/10">
-                  Edit & Games
+                  Edit
                 </button>
                 <button onClick={() => toggleMaintenance(s)} disabled={isOccupied} className={`flex-1 text-xs py-2 rounded-md text-foreground transition-colors border ${isMaintenance ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/20 text-cyan-400' : 'bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/10'}`}>
-                  {isMaintenance ? 'Enable' : 'Maintenance'}
+                  {isMaintenance ? 'Enable' : 'Maint.'}
                 </button>
               </div>
             </Card>
@@ -128,6 +140,14 @@ export function Stations() {
         })}
       </div>
 
+      <StationHistoryModal
+        station={historyStation}
+        onClose={() => setHistoryStation(null)}
+      />
+      <PricingChartModal
+        open={isPricingModalOpen}
+        onClose={() => setIsPricingModalOpen(false)}
+      />
       <EditStationModal 
         station={editingStation} 
         onClose={() => setEditingStation(null)} 

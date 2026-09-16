@@ -4,11 +4,12 @@ import type { Station, Session, PricingRule, Customer, Game } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Gamepad2, Play, Square, Plus, CalendarDays, Bell, Users } from 'lucide-react';
+import { Gamepad2, Play, Square, Plus, CalendarDays, Bell, Users, BarChart3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { StartSessionModal } from '../components/StartSessionModal';
 import { StopSessionModal } from '../components/StopSessionModal';
 import { AddFoodModal } from '../components/AddFoodModal';
+import { PricingChartModal } from '../components/PricingChartModal';
 
 export function Dashboard() {
   const [stations, setStations] = useState<Station[]>([]);
@@ -18,6 +19,7 @@ export function Dashboard() {
   const [startModalStation, setStartModalStation] = useState<Station | null>(null);
   const [stopModalSession, setStopModalSession] = useState<{station: Station, session: Session} | null>(null);
   const [foodModalSession, setFoodModalSession] = useState<Session | null>(null);
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -55,11 +57,16 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-        <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-muted-foreground backdrop-blur-md">
-          <CalendarDays className="w-4 h-4 text-indigo-400" />
-          <span className="text-sm font-medium">{today} • {timeString}</span>
+        <div className="flex items-center gap-3">
+          <Button onClick={() => setIsPricingModalOpen(true)} variant="outline" className="border-border gap-2 text-xs">
+            <BarChart3 className="w-4 h-4 text-indigo-400" /> Pricing Chart
+          </Button>
+          <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-muted-foreground backdrop-blur-md">
+            <CalendarDays className="w-4 h-4 text-indigo-400" />
+            <span className="text-sm font-medium">{today} • {timeString}</span>
+          </div>
         </div>
       </div>
 
@@ -100,6 +107,11 @@ export function Dashboard() {
         session={foodModalSession}
         onClose={() => setFoodModalSession(null)}
         onAdd={loadData}
+      />
+
+      <PricingChartModal
+        open={isPricingModalOpen}
+        onClose={() => setIsPricingModalOpen(false)}
       />
     </div>
   );

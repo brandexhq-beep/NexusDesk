@@ -49,12 +49,18 @@ export function calculateDynamicCost(
     return { cost: 0, minutesUsed };
   }
 
-  // Dynamic PS5 / Multi-player Pricing Matrix Calculation
-  if (station.type.startsWith('ps5') || station.player_rates) {
+  // Dynamic PS5, Pool, Snooker & Multi-player Pricing Calculation
+  const isMultiplayerType = station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('multi');
+  if (isMultiplayerType || station.player_rates || numPlayers > 1) {
     const players = Math.min(Math.max(1, numPlayers), 4);
-    const customHourly = station.player_rates?.[players] || (players === 1 ? station.hourly_rate : null);
-    const defaultHourly = PS5_PRICING_MATRIX[60][players] || 200;
-    const effectiveHourly = customHourly || defaultHourly;
+    
+    // Determine effective hourly rate based on station config or default multipliers (1P: 100%, 2P: 140%, 3P: 180%, 4P: 220%)
+    const defaultMultipliers: Record<number, number> = { 1: 1.0, 2: 1.4, 3: 1.8, 4: 2.2 };
+    const customHourly = station.player_rates?.[players];
+    const matrixHourly = PS5_PRICING_MATRIX[60]?.[players];
+    
+    const effectiveHourly = customHourly 
+      ?? (station.type.startsWith('ps5') && matrixHourly ? matrixHourly : Math.round(station.hourly_rate * (defaultMultipliers[players] || 1.0)));
 
     const hours = Math.floor(billableMins / 60);
     const remainingMins = billableMins % 60;
@@ -62,16 +68,14 @@ export function calculateDynamicCost(
     let totalCost = hours * effectiveHourly;
     
     if (remainingMins > 0) {
-      // Find the next available 5-min chunk
-      const chunks = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
-      const matchedChunk = chunks.find(c => c >= remainingMins) || 60;
-
-      if (customHourly && customHourly !== defaultHourly) {
-        const defaultChunk = PS5_PRICING_MATRIX[matchedChunk]?.[players] || (matchedChunk / 60) * defaultHourly;
-        const ratio = customHourly / defaultHourly;
-        totalCost += Math.round(defaultChunk * ratio);
+      if (station.type.startsWith('ps5') && !customHourly) {
+        // For standard PS5, look up the 5-min step matrix chunk or pro-rate intermediate minutes
+        const chunks = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+        const matchedChunk = chunks.find(c => c >= remainingMins) || 60;
+        totalCost += PS5_PRICING_MATRIX[matchedChunk]?.[players] || Math.round((remainingMins / 60) * effectiveHourly);
       } else {
-        totalCost += PS5_PRICING_MATRIX[matchedChunk]?.[players] || Math.round((matchedChunk / 60) * effectiveHourly);
+        // Pro-rata exact intermediate minutes calculation for pool, snooker & custom stations
+        totalCost += Math.round((remainingMins / 60) * effectiveHourly);
       }
     }
     

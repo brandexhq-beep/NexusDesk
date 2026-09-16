@@ -106,7 +106,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
         payment_mode: null,
         status: 'active',
         game_ids: selectedGameIds,
-        num_players: station.type.startsWith('ps5') ? numPlayers : undefined
+        num_players: (station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('multi') || !!station.player_rates) ? numPlayers : undefined
       });
 
       await db.stations.update(station.id, { status: 'occupied' });
@@ -275,7 +275,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
             </Select>
           </div>
           
-          {station?.type.startsWith('ps5') && (
+          {(station?.type.startsWith('ps5') || station?.type === 'pool' || station?.type === 'snooker' || station?.type.includes('multi') || !!station?.player_rates) && (
             <div className="space-y-2">
               <Label htmlFor="players">Number of Players</Label>
               <Select value={numPlayers.toString()} onValueChange={(v) => setNumPlayers(parseInt(v))}>
