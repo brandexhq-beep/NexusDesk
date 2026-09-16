@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
 import type { Station, Customer, MenuItem, Game } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
+import { fuzzySearch } from '../lib/search';
 
 interface StartSessionModalProps {
   station: Station | null;
@@ -29,6 +30,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
   const [games, setGames] = useState<{game: Game, available: number}[]>([]);
   const [selectedGameIds, setSelectedGameIds] = useState<string[]>([]);
   const [numPlayers, setNumPlayers] = useState<number>(1);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (station) {
@@ -141,22 +143,42 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
     }
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
+  const [addingCustomerLoading, setAddingCustomerLoading] = useState(false);
 
-  const filteredCustomers = customers.filter(c => {
-    if (!searchQuery) return true;
-    const search = searchQuery.toLowerCase().replace(/\s+/g, '');
-    const name = c.name.toLowerCase().replace(/\s+/g, '');
-    const phone = c.phone.replace(/\s+/g, '');
-    
-    // Super basic fuzzy: check if search string chars exist in order
-    let matchIndex = 0;
-    for (let i = 0; i < name.length; i++) {
-      if (name[i] === search[matchIndex]) matchIndex++;
-      if (matchIndex === search.length) return true;
+  const handleQuickAddCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustName.trim()) return;
+
+    setAddingCustomerLoading(true);
+    try {
+      const newCust = await db.customers.add({
+        name: newCustName.trim(),
+        phone: newCustPhone.trim(),
+        wallet_balance: 0,
+        available_minutes: 0,
+        loyalty_points: 0
+      });
+
+      const updatedCusts = await db.customers.getAll();
+      setCustomers(updatedCusts);
+      setSelectedCustomerId(newCust.id);
+      setIsCreatingCustomer(false);
+      setNewCustName('');
+      setNewCustPhone('');
+    } catch (err) {
+      console.error('Failed to quick add customer:', err);
+    } finally {
+      setAddingCustomerLoading(false);
     }
-    return phone.includes(search);
-  });
+  };
+
+  const filteredCustomers = fuzzySearch(customers, searchQuery, (c) => [
+    c.name,
+    c.phone
+  ]);
 
   return (
     <Dialog open={!!station} onOpenChange={(open) => !open && onClose()}>
@@ -177,8 +199,48 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
         ) : (
           <div className="space-y-6 py-4">
             <div className="space-y-3">
-              <Label>Customer</Label>
-              
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold text-foreground">Select Customer</Label>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingCustomer(!isCreatingCustomer)}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+                >
+                  {isCreatingCustomer ? 'Cancel' : '+ Quick Add New Customer'}
+                </button>
+              </div>
+
+              {/* Inline Quick Add Customer Form */}
+              {isCreatingCustomer && (
+                <form onSubmit={handleQuickAddCustomer} className="p-3.5 rounded-lg border border-indigo-500/30 bg-indigo-950/20 space-y-3">
+                  <div className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Add New Customer Profile</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[11px] text-muted-foreground">Customer Name *</Label>
+                      <Input
+                        required
+                        placeholder="e.g. Rahul Sharma"
+                        value={newCustName}
+                        onChange={(e) => setNewCustName(e.target.value)}
+                        className="h-8 text-xs border-white/10 bg-black/40"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[11px] text-muted-foreground">Phone Number</Label>
+                      <Input
+                        placeholder="e.g. 9876543210"
+                        value={newCustPhone}
+                        onChange={(e) => setNewCustPhone(e.target.value)}
+                        className="h-8 text-xs border-white/10 bg-black/40"
+                      />
+                    </div>
+                  </div>
+                  <Button type="submit" disabled={addingCustomerLoading} size="sm" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-8">
+                    {addingCustomerLoading ? 'Saving...' : 'Save & Select Customer'}
+                  </Button>
+                </form>
+              )}
+
               {/* Distinct Walk-in Button */}
               <button 
                 onClick={() => setSelectedCustomerId('walk-in')}
@@ -219,7 +281,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
                   </div>
                 ))}
                 {searchQuery && filteredCustomers.length === 0 && (
-                  <div className="p-4 text-center text-sm text-muted-foreground">No matches found.</div>
+                  <div className="p-4 text-center text-sm text-muted-foreground">No matching customers found.</div>
                 )}
               </div>
             </div>

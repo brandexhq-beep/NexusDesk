@@ -4,7 +4,7 @@ import type { Station, Session, PricingRule, Customer, Game } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Gamepad2, Play, Square, Plus, CalendarDays, Bell, Users, BarChart3 } from 'lucide-react';
+import { Gamepad2, Play, Square, Plus, CalendarDays, Bell, Users, BarChart3, Search } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { StartSessionModal } from '../components/StartSessionModal';
 import { StopSessionModal } from '../components/StopSessionModal';
@@ -20,6 +20,9 @@ export function Dashboard() {
   const [stopModalSession, setStopModalSession] = useState<{station: Station, session: Session} | null>(null);
   const [foodModalSession, setFoodModalSession] = useState<Session | null>(null);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+  
+  const [stationSearch, setStationSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'occupied' | 'free'>('all');
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -55,10 +58,26 @@ export function Dashboard() {
     hour12: true
   });
 
+  const occupiedCount = stations.filter(s => s.status === 'occupied').length;
+  const freeCount = stations.filter(s => s.status === 'free').length;
+
+  const filteredStations = stations.filter(st => {
+    if (statusFilter === 'occupied' && st.status !== 'occupied') return false;
+    if (statusFilter === 'free' && st.status !== 'free') return false;
+    if (stationSearch.trim()) {
+      const q = stationSearch.toLowerCase();
+      return st.name.toLowerCase().includes(q) || st.type.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Live station status, active player monitoring, and quick checkout.</p>
+        </div>
         <div className="flex items-center gap-3">
           <Button onClick={() => setIsPricingModalOpen(true)} variant="outline" className="border-border gap-2 text-xs">
             <BarChart3 className="w-4 h-4 text-indigo-400" /> Pricing Chart
@@ -70,11 +89,52 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Station Quick Filter & Search Bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-black/40 border border-white/10 rounded-xl">
+        <div className="flex items-center gap-1.5 bg-black/40 border border-white/10 p-1 rounded-lg">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+              statusFilter === 'all' ? 'bg-indigo-600 text-white font-bold' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            All ({stations.length})
+          </button>
+          <button
+            onClick={() => setStatusFilter('occupied')}
+            className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+              statusFilter === 'occupied' ? 'bg-red-500/20 border border-red-500/30 text-red-400 font-bold' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Occupied ({occupiedCount})
+          </button>
+          <button
+            onClick={() => setStatusFilter('free')}
+            className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
+              statusFilter === 'free' ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Free ({freeCount})
+          </button>
+        </div>
+
+        <div className="relative w-full sm:w-64">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search station name or type..."
+            value={stationSearch}
+            onChange={(e) => setStationSearch(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-black/30 border border-white/10 rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+      </div>
+
       {loading ? (
         <div className="text-muted-foreground">Loading stations...</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {stations.map(station => (
+          {filteredStations.map(station => (
             <StationCard 
               key={station.id} 
               station={station} 
@@ -271,6 +331,32 @@ function StationCard({
         <CardContent className="flex-1 py-4 flex flex-col justify-between">
           {isOccupied ? (
             <div className="space-y-3">
+              {/* Customer Profile Banner on Active Station */}
+              <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between shadow-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-indigo-300 font-bold text-xs uppercase shrink-0">
+                    {customer ? customer.name.charAt(0) : 'W'}
+                  </div>
+                  <div className="overflow-hidden">
+                    <div className="text-xs font-bold text-indigo-200 truncate max-w-[140px]">
+                      {customer ? customer.name : 'Walk-in Customer'}
+                    </div>
+                    {customer?.phone ? (
+                      <div className="text-[10px] text-muted-foreground font-mono truncate">
+                        {customer.phone}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-muted-foreground italic">No profile attached</div>
+                    )}
+                  </div>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                  customer ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300' : 'bg-white/5 border-white/10 text-muted-foreground'
+                }`}>
+                  {customer ? 'Member' : 'Walk-in'}
+                </span>
+              </div>
+
               {/* Selected / Running Game Display */}
               {runningGames.length > 0 ? (
                 <div className="p-2.5 rounded-lg bg-cyan-950/40 border border-cyan-500/30 flex flex-col gap-1.5 shadow-sm shadow-cyan-950/50">
