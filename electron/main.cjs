@@ -62,10 +62,12 @@ function setupAutoUpdater() {
   autoUpdater.allowDowngrade = false;
   autoUpdater.allowPrerelease = false;
   
-  // Support private/public repositories using GH_TOKEN or GITHUB_TOKEN if provided
-  const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-  if (ghToken) {
+  // Only set Authorization header if a valid, non-empty token is provided
+  const ghToken = (process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '').trim();
+  if (ghToken && ghToken.startsWith('ghp_')) {
     autoUpdater.requestHeaders = { "Authorization": `bearer ${ghToken}` };
+  } else {
+    delete autoUpdater.requestHeaders;
   }
 
   autoUpdater.on('checking-for-update', () => {
