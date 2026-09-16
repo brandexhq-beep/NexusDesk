@@ -27,6 +27,12 @@
       ],
       "icon": "public/pwa-512x512.png"
     },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false
+    },
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**/*",
       "**/*.node"

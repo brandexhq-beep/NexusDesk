@@ -59,15 +59,17 @@ function createWindow() {
 function setupAutoUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.allowPrerelease = false;
   
-  // Support private repositories using GH_TOKEN if provided
-  const ghToken = process.env.GH_TOKEN;
+  // Support private/public repositories using GH_TOKEN or GITHUB_TOKEN if provided
+  const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   if (ghToken) {
     autoUpdater.requestHeaders = { "Authorization": `bearer ${ghToken}` };
   }
 
   autoUpdater.on('checking-for-update', () => {
-    console.log('[Updater] Checking for update...');
+    console.log('[Updater] Checking for update on GitHub...');
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update_checking');
     }
@@ -95,16 +97,16 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('[Updater] Update downloaded, ready to install:', info.version);
+    console.log('[Updater] Update downloaded successfully, ready to install:', info.version);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update_downloaded', info);
     }
   });
 
   autoUpdater.on('error', (err) => {
-    console.error('[Updater] Error:', err.message);
+    console.error('[Updater] Auto-updater error:', err ? (err.message || String(err)) : 'Unknown error');
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('update_error', { message: err.message });
+      mainWindow.webContents.send('update_error', { message: err ? (err.message || String(err)) : 'Update check failed' });
     }
   });
 
@@ -117,21 +119,29 @@ function setupAutoUpdater() {
       const res = await autoUpdater.checkForUpdates();
       return { status: 'ok', updateInfo: res?.updateInfo };
     } catch (e) {
-      console.error('[Updater] Check failed:', e.message);
+      console.error('[Updater] Manual check failed:', e.message);
       return { status: 'error', message: e.message };
     }
   });
 
   // IPC: install now (quit & install)
   ipcMain.handle('updater:installNow', () => {
+    console.log('[Updater] Triggering quitAndInstall...');
     autoUpdater.quitAndInstall(false, true);
   });
 
-  // Only check in packaged builds
+  // Initial check & periodic checks in packaged production builds (every 2 hours)
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify().catch((e) => {
       console.warn('[Updater] Initial check failed:', e.message);
     });
+
+    setInterval(() => {
+      console.log('[Updater] Running periodic background update check...');
+      autoUpdater.checkForUpdates().catch((e) => {
+        console.warn('[Updater] Periodic check failed:', e.message);
+      });
+    }, 2 * 60 * 60 * 1000); // 2 hours
   }
 }
 
