@@ -5,16 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AddMenuItemModal } from '../components/AddMenuItemModal';
+import { MenuItemModal } from '../components/MenuItemModal';
 import { ConfirmModal } from '../components/ConfirmModal';
-import { Trash2, Search } from 'lucide-react';
+import { Trash2, Pencil, Search, Plus } from 'lucide-react';
 import { fuzzySearch } from '../lib/search';
 
 export function Menu() {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
+  const [currency, setCurrency] = useState('₹');
 
   useEffect(() => {
     loadItems();
@@ -22,7 +24,9 @@ export function Menu() {
 
   const loadItems = async () => {
     const data = await db.menu.getAll();
+    const settings = await db.settings.get();
     setItems(data);
+    setCurrency(settings.currency_symbol || '₹');
   };
 
   const handleUpdateStock = async (id: string, value: string) => {
@@ -51,7 +55,9 @@ export function Menu() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Menu & Combos</h1>
-        <Button onClick={() => setIsAddOpen(true)} className="w-full sm:w-auto">Add Item</Button>
+        <Button onClick={() => { setEditingItem(null); setIsModalOpen(true); }} className="w-full sm:w-auto gap-2">
+          <Plus className="w-4 h-4" /> Add Item
+        </Button>
       </div>
       
       <Card className="bg-card border-border">
@@ -96,7 +102,7 @@ export function Menu() {
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">₹ {item.price}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{currency} {item.price}</TableCell>
                   <TableCell>
                     {(item.category === 'snack' || item.category === 'drink') ? (
                       <Input
@@ -121,8 +127,23 @@ export function Menu() {
                       {item.active ? 'Active' : 'Inactive'}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => setItemToDelete(item)} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
+                  <TableCell className="text-right space-x-1">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => { setEditingItem(item); setIsModalOpen(true); }} 
+                      className="text-indigo-400 hover:text-indigo-300 hover:bg-indigo-400/10"
+                      title="Edit Item"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => setItemToDelete(item)} 
+                      className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                      title="Delete Item"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </TableCell>
@@ -133,10 +154,11 @@ export function Menu() {
         </CardContent>
       </Card>
 
-      <AddMenuItemModal 
-        open={isAddOpen} 
-        onClose={() => setIsAddOpen(false)} 
-        onAdd={loadItems} 
+      <MenuItemModal 
+        open={isModalOpen}
+        item={editingItem}
+        onClose={() => setIsModalOpen(false)} 
+        onSaveSuccess={loadItems} 
       />
 
       <ConfirmModal
