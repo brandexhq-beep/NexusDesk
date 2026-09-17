@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
 import type { Session, MenuItem, SessionOrder } from '../types';
-import { Minus, Plus, ShoppingCart } from 'lucide-react';
+import { Minus, Plus, ShoppingCart, Search } from 'lucide-react';
+import { fuzzySearch } from '../lib/search';
 
 interface AddFoodModalProps {
   session: Session | null;
@@ -16,6 +18,7 @@ export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
   const [cart, setCart] = useState<SessionOrder[]>([]);
   const [originalCart, setOriginalCart] = useState<SessionOrder[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (session) {
@@ -25,9 +28,11 @@ export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
       // Initialize cart from session
       setCart([...session.orders]);
       setOriginalCart([...session.orders]);
+      setSearchQuery('');
     } else {
       setCart([]);
       setOriginalCart([]);
+      setSearchQuery('');
     }
   }, [session]);
 
@@ -36,13 +41,6 @@ export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
     const originalItem = originalCart.find(o => o.item_id === item.id);
     
     const initialStock = item.stock_quantity || 0;
-    // The amount they had in cart before they opened the modal doesn't count against current stock 
-    // because it was already deducted when they previously saved.
-    // So current physical stock = initialStock
-    // If they increase quantity, they consume from initialStock.
-    // Actually, it's easier to think of remaining allowed to add:
-    // Available to add = initialStock - (currentCartQty - originalCartQty)
-    
     const qtyInCart = cartItem ? cartItem.quantity : 0;
     const qtyInOriginal = originalItem ? originalItem.quantity : 0;
     
@@ -108,22 +106,42 @@ export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
 
   const cartTotal = cart.reduce((sum, item) => sum + (item.price_at_order * item.quantity), 0);
 
+  const filteredItems = fuzzySearch(items, searchQuery, (i) => [
+    i.name,
+    i.category,
+    i.subcategory
+  ]);
+
   return (
     <Dialog open={!!session} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="bg-card text-card-foreground border-border max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="p-6 pb-2 border-b border-border bg-muted/20">
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-indigo-400" />
-            Add Food & Drinks
+            Add Food &amp; Drinks
           </DialogTitle>
         </DialogHeader>
         
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           {/* Menu Items */}
           <div className="flex-1 overflow-y-auto p-6 border-r border-border min-h-[300px]">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4">Menu Items</h3>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground">Menu Items ({filteredItems.length})</h3>
+            </div>
+
+            {/* Food Search Bar */}
+            <div className="relative mb-4">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search food, snacks, cold drinks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-xs border-border bg-black/20"
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
-              {items.map(item => {
+              {filteredItems.map(item => {
                 const available = getAvailableStock(item);
                 const isOutOfStock = available <= 0;
                 return (
@@ -141,9 +159,9 @@ export function AddFoodModal({ session, onClose, onAdd }: AddFoodModalProps) {
                   </button>
                 );
               })}
-              {items.length === 0 && (
+              {filteredItems.length === 0 && (
                 <div className="col-span-full text-center py-8 text-muted-foreground text-sm">
-                  No active menu items available.
+                  {searchQuery ? 'No matching menu items found.' : 'No active menu items available.'}
                 </div>
               )}
             </div>

@@ -5,16 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { UserPlus, Phone, WalletCards, Download, Search } from 'lucide-react';
+import { UserPlus, Phone, WalletCards, Download, Search, FileSpreadsheet } from 'lucide-react';
 import { AddCustomerModal } from '../components/AddCustomerModal';
 import { AddBalanceModal } from '../components/AddBalanceModal';
 import { CustomerProfileModal } from '../components/CustomerProfileModal';
+import { ImportCustomersModal } from '../components/ImportCustomersModal';
 import { fuzzySearch } from '../lib/search';
 
 export function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [addBalanceCustomer, setAddBalanceCustomer] = useState<Customer | null>(null);
   const [viewProfileCustomer, setViewProfileCustomer] = useState<Customer | null>(null);
 
@@ -65,7 +67,10 @@ export function Customers() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Customers</h1>
-        <div className="flex gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <Button onClick={() => setIsImportModalOpen(true)} variant="outline" className="flex-1 sm:flex-none border-emerald-500/30 bg-emerald-950/10 text-emerald-400 hover:bg-emerald-500/20 gap-2">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Import Excel
+          </Button>
           <Button onClick={handleExportCSV} variant="outline" className="flex-1 sm:flex-none border-border gap-2">
             <Download className="w-4 h-4" /> Export CSV
           </Button>
@@ -141,6 +146,12 @@ export function Customers() {
         open={isAddModalOpen} 
         onClose={() => setIsAddModalOpen(false)} 
         onAdd={loadCustomers} 
+      />
+
+      <ImportCustomersModal
+        open={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={loadCustomers}
       />
 
       <AddBalanceModal

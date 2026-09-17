@@ -482,12 +482,30 @@ export function Settings() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Currency Symbol</Label>
+                  <Label>Currency Symbol / Text</Label>
+                  <div className="flex gap-2 mb-1.5">
+                    {['₹', 'INR', '$', '€'].map(symbol => (
+                      <button
+                        key={symbol}
+                        type="button"
+                        onClick={() => setFormData({...formData, currency_symbol: symbol})}
+                        className={`px-2.5 py-1 text-xs rounded-md border font-mono transition-all ${
+                          formData.currency_symbol === symbol 
+                            ? 'bg-indigo-600 border-indigo-500 text-white font-bold' 
+                            : 'bg-black/30 border-white/10 text-muted-foreground hover:bg-white/10'
+                        }`}
+                      >
+                        {symbol}
+                      </button>
+                    ))}
+                  </div>
                   <Input 
                     value={formData.currency_symbol} 
                     onChange={(e) => setFormData({...formData, currency_symbol: e.target.value})}
-                    className="border-white/10 bg-background/50"
+                    placeholder="e.g. INR or ₹"
+                    className="border-white/10 bg-background/50 font-mono"
                   />
+                  <p className="text-[10px] text-muted-foreground">Select preset or enter custom currency representation (e.g., INR or ₹).</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Logo Image/GIF URL (Printed if available)</Label>
