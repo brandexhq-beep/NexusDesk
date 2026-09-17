@@ -31,7 +31,12 @@ export function Settings() {
     invoice_qr_type: 'none',
     invoice_upi_id: '',
     owner_phone: '',
-    low_stock_threshold: '5'
+    low_stock_threshold: '5',
+    whatsapp_session_reminders_enabled: true,
+    session_reminder_mins_1: '15',
+    session_reminder_mins_2: '5',
+    session_reminder_end_enabled: true,
+    wa_queue_cooldown_sec: '5'
   });
   const [loading, setLoading] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -96,7 +101,12 @@ export function Settings() {
       invoice_qr_type: data.invoice_qr_type || 'none',
       invoice_upi_id: data.invoice_upi_id || '',
       owner_phone: data.owner_phone || '',
-      low_stock_threshold: data.low_stock_threshold?.toString() || '5'
+      low_stock_threshold: data.low_stock_threshold?.toString() || '5',
+      whatsapp_session_reminders_enabled: data.whatsapp_session_reminders_enabled !== false,
+      session_reminder_mins_1: (data.session_reminder_mins_1 ?? 15).toString(),
+      session_reminder_mins_2: (data.session_reminder_mins_2 ?? 5).toString(),
+      session_reminder_end_enabled: data.session_reminder_end_enabled !== false,
+      wa_queue_cooldown_sec: (data.wa_queue_cooldown_sec ?? 5).toString()
     });
   };
 
@@ -176,9 +186,15 @@ export function Settings() {
         invoice_qr_type: formData.invoice_qr_type as any,
         invoice_upi_id: formData.invoice_upi_id,
         owner_phone: formData.owner_phone,
-        low_stock_threshold: Number(formData.low_stock_threshold)
+        low_stock_threshold: Number(formData.low_stock_threshold),
+        whatsapp_session_reminders_enabled: formData.whatsapp_session_reminders_enabled,
+        session_reminder_mins_1: Number(formData.session_reminder_mins_1),
+        session_reminder_mins_2: Number(formData.session_reminder_mins_2),
+        session_reminder_end_enabled: formData.session_reminder_end_enabled,
+        wa_queue_cooldown_sec: Number(formData.wa_queue_cooldown_sec)
       });
       await loadSettings();
+      toast.success('Settings saved successfully!');
     } catch (e) {
       console.error(e);
     } finally {
@@ -800,6 +816,86 @@ export function Settings() {
                   )}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-black/40 backdrop-blur-md border-white/10">
+            <CardHeader>
+              <CardTitle className="text-card-foreground">Session Reminder & Message Intervals</CardTitle>
+              <CardDescription>Customize when automated WhatsApp reminders and warnings are sent to players.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                <div>
+                  <Label className="text-base">Enable WhatsApp Session Reminders</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Automatically send WhatsApp warnings to customers before their session time ends.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={formData.whatsapp_session_reminders_enabled}
+                    onChange={(e) => setFormData({...formData, whatsapp_session_reminders_enabled: e.target.checked})}
+                  />
+                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+
+              <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity ${formData.whatsapp_session_reminders_enabled ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                <div className="space-y-2">
+                  <Label>Primary Warning Interval (Minutes before end)</Label>
+                  <Input 
+                    type="number" min="1" max="60"
+                    value={formData.session_reminder_mins_1} 
+                    onChange={(e) => setFormData({...formData, session_reminder_mins_1: e.target.value})}
+                    placeholder="e.g. 15"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">First WhatsApp reminder sent (e.g. 15 minutes before session time is up).</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Secondary Warning Interval (Minutes before end)</Label>
+                  <Input 
+                    type="number" min="0" max="30"
+                    value={formData.session_reminder_mins_2} 
+                    onChange={(e) => setFormData({...formData, session_reminder_mins_2: e.target.value})}
+                    placeholder="e.g. 5"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Final warning sent before session end (e.g. 5 minutes left). Set to 0 to disable.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                <div>
+                  <Label className="text-base">Send "Time Is Up" WhatsApp Message</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Notify player via WhatsApp when their session duration reaches 0 minutes.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={formData.session_reminder_end_enabled}
+                    onChange={(e) => setFormData({...formData, session_reminder_end_enabled: e.target.checked})}
+                  />
+                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+
+              <div className="pt-4 border-t border-white/5 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Outbound Queue Delay (Seconds)</Label>
+                  <Input 
+                    type="number" min="1" max="60"
+                    value={formData.wa_queue_cooldown_sec} 
+                    onChange={(e) => setFormData({...formData, wa_queue_cooldown_sec: e.target.value})}
+                    placeholder="e.g. 5"
+                    className="border-white/10 bg-background/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Spacing delay between sending queued WhatsApp messages to ensure account safety.</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

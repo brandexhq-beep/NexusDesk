@@ -11,11 +11,17 @@ export function GlobalAlerts() {
   useEffect(() => {
     // Poll active sessions every 10 seconds to see if any prepaid sessions have expired
     const checkSessions = async () => {
-      const activeSessions = await db.sessions.getAll(); // Ideally we'd have a getActive() but getAll is fine for mockup
+      const activeSessions = await db.sessions.getAll();
       const active = activeSessions.filter(s => s.status === 'active' && s.prepaid_duration_mins !== null);
       
       const stations = await db.stations.getAll();
+      const settings = await db.settings.get();
       const newAlerts: { id: string; stationName: string }[] = [];
+
+      const remindersEnabled = settings.whatsapp_session_reminders_enabled !== false;
+      const r1 = settings.session_reminder_mins_1 ?? 15;
+      const r2 = settings.session_reminder_mins_2 ?? 5;
+      const rEnd = settings.session_reminder_end_enabled !== false;
 
       for (const session of active) {
         if (!session.prepaid_duration_mins) continue;
@@ -28,6 +34,7 @@ export function GlobalAlerts() {
         let updated = false;
 
         const checkAndSend = async (thresholdMins: number, label: string, message: string) => {
+           if (!remindersEnabled) return;
            if (diffMins >= (session.prepaid_duration_mins! - thresholdMins) && !remindersSent.includes(label)) {
               if (session.customer_id) {
                 const customer = await db.customers.getById(session.customer_id);
@@ -47,18 +54,24 @@ export function GlobalAlerts() {
         const station = stations.find(st => st.id === session.station_id);
         const stName = station ? station.name : 'your station';
 
-        // Check 15m warning
-        await checkAndSend(15, '15m', `Hi! Your session at ${stName} has 15 minutes left. You can extend at the counter!`);
+        // Primary Warning Reminder (e.g. 15m)
+        if (r1 > 0) {
+          await checkAndSend(r1, `${r1}m`, `Hi! Your session at ${stName} has ${r1} minutes left. You can extend at the counter!`);
+        }
         
-        // Check 5m warning
-        await checkAndSend(5, '5m', `Hi! Your session at ${stName} has only 5 minutes left.`);
+        // Secondary Warning Reminder (e.g. 5m)
+        if (r2 > 0 && r2 < r1) {
+          await checkAndSend(r2, `${r2}m`, `Hi! Your session at ${stName} has only ${r2} minutes left.`);
+        }
 
         // Time is up
         if (diffMins >= session.prepaid_duration_mins) {
           if (station) {
             newAlerts.push({ id: session.id, stationName: station.name });
           }
-          await checkAndSend(0, '0m', `Your session at ${stName} is now over. Thank you for playing!`);
+          if (rEnd) {
+            await checkAndSend(0, '0m', `Your session at ${stName} is now over. Thank you for playing!`);
+          }
         }
 
         if (updated) {

@@ -143,6 +143,11 @@ export interface AppSettings {
   invoice_upi_id?: string;
   owner_phone?: string;
   low_stock_threshold?: number;
+  whatsapp_session_reminders_enabled?: boolean;
+  session_reminder_mins_1?: number;
+  session_reminder_mins_2?: number;
+  session_reminder_end_enabled?: boolean;
+  wa_queue_cooldown_sec?: number;
 }
 
 export interface PricingRule {

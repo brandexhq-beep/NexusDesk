@@ -49,6 +49,11 @@ const createBrowserMockStorage = () => {
     admin_password: 'admin',
     google_review_url: 'https://g.page/r/YOUR_UNIQUE_LINK/review',
     review_delay_mins: 30,
+    whatsapp_session_reminders_enabled: true,
+    session_reminder_mins_1: 15,
+    session_reminder_mins_2: 5,
+    session_reminder_end_enabled: true,
+    wa_queue_cooldown_sec: 5,
   };
 
   const defaultStations: Station[] = [
