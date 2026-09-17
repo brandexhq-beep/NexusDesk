@@ -128,8 +128,8 @@ function setupAutoUpdater() {
 
   // IPC: install now (quit & install)
   ipcMain.handle('updater:installNow', () => {
-    console.log('[Updater] Triggering quitAndInstall...');
-    autoUpdater.quitAndInstall(false, true);
+    console.log('[Updater] Triggering quitAndInstall (silent overwrite & auto-restart)...');
+    autoUpdater.quitAndInstall(true, true);
   });
 
   // Initial check & periodic checks in packaged production builds (every 2 hours)

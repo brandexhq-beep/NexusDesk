@@ -31,7 +31,13 @@
       "oneClick": true,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "${productName}",
+      "guid": "com.brandex.saragamingzone",
+      "shortcutName": "${productName}",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**/*",
