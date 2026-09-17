@@ -42,6 +42,8 @@ export function Reports() {
   // Selected session details modal
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
 
+  const [expensesList, setExpensesList] = useState<any[]>([]);
+
   useEffect(() => {
     // Set default dates
     const now = new Date();
@@ -54,18 +56,20 @@ export function Reports() {
   }, []);
 
   const loadAllData = async () => {
-    const [custs, stns, sess, gms, set] = await Promise.all([
+    const [custs, stns, sess, gms, set, exps] = await Promise.all([
       db.customers.getAll(),
       db.stations.getAll(),
       db.sessions.getAll(),
       db.games.getAll(),
-      db.settings.get()
+      db.settings.get(),
+      db.expenses.getAll()
     ]);
 
     setCustomers(custs);
     setStations(stns);
     setSessions(sess);
     setGames(gms);
+    setExpensesList(exps || []);
     setCurrency(set.currency_symbol || '₹');
     setCafeName(set.cafe_name || 'Gaming Cafe');
 
@@ -200,15 +204,13 @@ export function Reports() {
     setUtilizationData(utilization);
 
     // Calculate expenses for date range
-    db.expenses.getAll().then(expList => {
-      const totalExp = expList.reduce((acc, e) => {
-        const t = Number(e.timestamp);
-        return (t >= startMs && t <= endMs) ? acc + e.amount : acc;
-      }, 0);
-      setTotalExpenses(totalExp);
-    });
+    const totalExp = (expensesList || []).reduce((acc, e) => {
+      const t = Number(e.timestamp);
+      return (t >= startMs && t <= endMs) ? acc + e.amount : acc;
+    }, 0);
+    setTotalExpenses(totalExp);
 
-  }, [sessions, dateFilterType, startDateStr, endDateStr, selectedStationFilter, games]);
+  }, [sessions, dateFilterType, startDateStr, endDateStr, selectedStationFilter, games, expensesList]);
 
   // Station name resolver
   const getStationName = (st_id: string) => {
@@ -220,7 +222,8 @@ export function Reports() {
   const getCustomerName = (cust_id: string | null) => {
     if (!cust_id) return 'Walk-in Customer';
     const found = customers.find(c => c.id === cust_id);
-    return found ? `${found.name} (${found.phone})` : 'Walk-in Customer';
+    if (!found) return 'Walk-in Customer';
+    return found.phone ? `${found.name} (${found.phone})` : found.name;
   };
 
   const getGameNames = (game_ids?: string[]) => {

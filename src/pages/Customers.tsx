@@ -15,6 +15,7 @@ import { fuzzySearch } from '../lib/search';
 export function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currency, setCurrency] = useState('₹');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [addBalanceCustomer, setAddBalanceCustomer] = useState<Customer | null>(null);
@@ -24,8 +25,11 @@ export function Customers() {
     loadCustomers();
   }, []);
 
-  const loadCustomers = () => {
-    db.customers.getAll().then(setCustomers);
+  const loadCustomers = async () => {
+    const data = await db.customers.getAll();
+    const settings = await db.settings.get();
+    setCustomers(data);
+    setCurrency(settings.currency_symbol || '₹');
   };
 
   const formatMinutes = (mins: number) => {
@@ -47,10 +51,10 @@ export function Customers() {
     const headers = ['Name', 'Phone', 'Time Balance (mins)', 'Wallet Balance', 'Loyalty Points'];
     const rows = filteredCustomers.map(c => [
       c.name,
-      c.phone,
-      c.available_minutes,
-      c.wallet_balance,
-      c.loyalty_points
+      c.phone || '',
+      c.available_minutes || 0,
+      c.wallet_balance || 0,
+      c.loyalty_points || 0
     ]);
     const csvContent = "data:text/csv;charset=utf-8," 
       + [headers.join(','), ...rows.map(e => e.join(','))].join("\n");
@@ -117,12 +121,16 @@ export function Customers() {
                   >
                     <TableCell className="font-medium text-foreground">{c.name}</TableCell>
                     <TableCell>
-                      <a href={`tel:${c.phone}`} className="inline-flex items-center gap-2 text-primary hover:underline">
-                        <Phone className="w-3 h-3" /> {c.phone}
-                      </a>
+                      {c.phone ? (
+                        <a href={`tel:${c.phone}`} className="inline-flex items-center gap-2 text-primary hover:underline">
+                          <Phone className="w-3 h-3" /> {c.phone}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground text-xs font-mono">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-indigo-400 font-medium">{formatMinutes(c.available_minutes)}</TableCell>
-                    <TableCell className="text-right text-emerald-500 font-medium">₹ {c.wallet_balance}</TableCell>
+                    <TableCell className="text-right text-emerald-500 font-medium">{currency} {c.wallet_balance || 0}</TableCell>
                     <TableCell className="text-right font-medium text-amber-500">{c.loyalty_points}</TableCell>
                     <TableCell className="text-right">
                       <Button 

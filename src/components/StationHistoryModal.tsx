@@ -43,7 +43,8 @@ export function StationHistoryModal({ station, onClose }: StationHistoryModalPro
   const getCustomerName = (cust_id: string | null) => {
     if (!cust_id) return 'Walk-in Customer';
     const c = customers.find(item => item.id === cust_id);
-    return c ? `${c.name} (${c.phone})` : 'Walk-in Customer';
+    if (!c) return 'Walk-in Customer';
+    return c.phone ? `${c.name} (${c.phone})` : c.name;
   };
 
   const getGameNames = (game_ids?: string[]) => {

@@ -13,6 +13,7 @@ interface CustomerProfileModalProps {
 export function CustomerProfileModal({ customer, onClose }: CustomerProfileModalProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [stations, setStations] = useState<Station[]>([]);
+  const [currency, setCurrency] = useState('₹');
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
 
@@ -21,8 +22,9 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
       setLoading(true);
       Promise.all([
         db.sessions.getAll(),
-        db.stations.getAll()
-      ]).then(([allSessions, allStations]) => {
+        db.stations.getAll(),
+        db.settings.get()
+      ]).then(([allSessions, allStations, settings]) => {
         // Filter sessions for this customer that are finished
         const customerSessions = allSessions
           .filter(s => s.customer_id === customer.id && s.status === 'completed')
@@ -30,6 +32,7 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
         
         setSessions(customerSessions);
         setStations(allStations);
+        setCurrency(settings.currency_symbol || '₹');
       }).finally(() => setLoading(false));
     } else {
       setSessions([]);
@@ -55,13 +58,13 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
       <DialogContent className="bg-card text-card-foreground border-border max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-2xl">{customer.name}'s Profile</DialogTitle>
-          <p className="text-muted-foreground">{customer.phone}</p>
+          <p className="text-muted-foreground">{customer.phone || 'No phone number'}</p>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-4 my-4">
           <div className="bg-black/20 border border-white/5 p-4 rounded-xl text-center">
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Lifetime Spend</p>
-            <p className="text-2xl font-bold text-emerald-400">₹ {totalSpend.toFixed(2)}</p>
+            <p className="text-2xl font-bold text-emerald-400">{currency} {totalSpend.toFixed(2)}</p>
           </div>
           <div className="bg-black/20 border border-white/5 p-4 rounded-xl text-center">
             <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">Last Visit</p>
@@ -96,7 +99,7 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-emerald-400">₹ {s.total_amount?.toFixed(2)}</div>
+                      <div className="font-bold text-emerald-400">{currency} {s.total_amount?.toFixed(2)}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">{durationMins} mins</div>
                     </div>
                   </div>

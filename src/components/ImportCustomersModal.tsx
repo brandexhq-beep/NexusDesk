@@ -55,7 +55,11 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
 
       const rawData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
       const existingCustomers = await db.customers.getAll();
-      const existingPhones = new Set(existingCustomers.map(c => c.phone.trim().replace(/\s+/g, '')));
+      const existingPhones = new Set(
+        existingCustomers
+          .map(c => (c.phone || '').trim().replace(/\s+/g, ''))
+          .filter(Boolean)
+      );
 
       let missingPhoneCount = 0;
       let duplicateCount = 0;
@@ -142,7 +146,11 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
 
     try {
       const existingCustomers = await db.customers.getAll();
-      const existingMap = new Map(existingCustomers.map(c => [c.phone.trim(), c]));
+      const existingMap = new Map(
+        existingCustomers
+          .filter(c => !!c.phone)
+          .map(c => [c.phone.trim(), c])
+      );
 
       let imported = 0;
       let updated = 0;
