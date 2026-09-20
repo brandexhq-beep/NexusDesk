@@ -69,11 +69,13 @@ export function AddStationModal({ isOpen, onClose, onAdd }: AddStationModalProps
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="pc">PC</SelectItem>
-                <SelectItem value="ps5">PS5</SelectItem>
-                <SelectItem value="ps5_vr">PS5 VR</SelectItem>
+                <SelectItem value="ps5">PS5 Gaming</SelectItem>
                 <SelectItem value="ps5_simracing">Sim Racing</SelectItem>
+                <SelectItem value="ps5_vr">PS5 VR</SelectItem>
                 <SelectItem value="snooker">Snooker</SelectItem>
+                <SelectItem value="pool">Pool Table</SelectItem>
+                <SelectItem value="board_games">Board Games</SelectItem>
+                <SelectItem value="pc">PC Station</SelectItem>
               </SelectContent>
             </Select>
           </div>

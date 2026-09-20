@@ -21,6 +21,11 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
   const [games, setGames] = useState<import('../types').Game[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [rate30m, setRate30m] = useState('');
+  const [rate2P, setRate2P] = useState('');
+  const [rate3P, setRate3P] = useState('');
+  const [rate4P, setRate4P] = useState('');
+
   useEffect(() => {
     db.games.getAll().then(setGames);
   }, []);
@@ -29,8 +34,12 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
     if (station) {
       setName(station.name);
       setHourlyRate(station.hourly_rate.toString());
+      setRate30m(station.rate_30min?.toString() || '');
       setGracePeriod(station.grace_period_minutes?.toString() || '0');
       setInstalledGames(station.installed_games || []);
+      setRate2P(station.player_rates?.[2]?.toString() || '');
+      setRate3P(station.player_rates?.[3]?.toString() || '');
+      setRate4P(station.player_rates?.[4]?.toString() || '');
     }
   }, [station]);
 
@@ -38,11 +47,21 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
     if (!station) return;
     setLoading(true);
     try {
+      const p1Rate = Number(hourlyRate) || 0;
+      const player_rates: Record<number, number> = {
+        1: p1Rate,
+      };
+      if (rate2P) player_rates[2] = Number(rate2P);
+      if (rate3P) player_rates[3] = Number(rate3P);
+      if (rate4P) player_rates[4] = Number(rate4P);
+
       await db.stations.update(station.id, {
         name,
-        hourly_rate: Number(hourlyRate),
+        hourly_rate: p1Rate,
+        rate_30min: rate30m ? Number(rate30m) : undefined,
         grace_period_minutes: Number(gracePeriod),
-        installed_games: installedGames
+        installed_games: installedGames,
+        player_rates
       });
       onUpdate();
       onClose();
@@ -71,12 +90,12 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
 
   return (
     <Dialog open={!!station} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="bg-card text-card-foreground border-border max-w-sm">
+      <DialogContent className="bg-card text-card-foreground border-border max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit Station</DialogTitle>
+          <DialogTitle>Edit Station Configuration</DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4 mt-4 h-96 overflow-y-auto pr-2">
+        <div className="space-y-4 mt-4 max-h-[75vh] overflow-y-auto pr-2">
           <div className="space-y-2">
             <Label>Station Name</Label>
             <Input 
@@ -85,16 +104,69 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
               className="bg-background border-border"
             />
           </div>
-          <div className="space-y-2">
-            <Label>Hourly Rate</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">₹</span>
-              <Input 
-                type="number" min="0" step="1" 
-                value={hourlyRate} 
-                onChange={(e) => setHourlyRate(e.target.value)} 
-                className="bg-background border-border pl-7"
-              />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>1 Player Hourly Rate (Base)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">₹</span>
+                <Input 
+                  type="number" min="0" step="1" 
+                  value={hourlyRate} 
+                  onChange={(e) => setHourlyRate(e.target.value)} 
+                  className="bg-background border-border pl-7"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>30-Min Rate (Optional)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">₹</span>
+                <Input 
+                  type="number" min="0" step="1" 
+                  placeholder="e.g. 200"
+                  value={rate30m} 
+                  onChange={(e) => setRate30m(e.target.value)} 
+                  className="bg-background border-border pl-7"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">Used for 30-min flat rate (VR / Sim Racing).</p>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-white/5">
+            <Label className="text-xs font-bold uppercase tracking-wider text-indigo-400">Multiplayer Hourly Rate Matrix (₹ / Hr)</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <span className="text-[10px] text-muted-foreground block mb-1">2 Players</span>
+                <Input 
+                  type="number" min="0"
+                  placeholder="e.g. 280"
+                  value={rate2P}
+                  onChange={e => setRate2P(e.target.value)}
+                  className="bg-background border-border text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block mb-1">3 Players</span>
+                <Input 
+                  type="number" min="0"
+                  placeholder="e.g. 380"
+                  value={rate3P}
+                  onChange={e => setRate3P(e.target.value)}
+                  className="bg-background border-border text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block mb-1">4 Players</span>
+                <Input 
+                  type="number" min="0"
+                  placeholder="e.g. 450"
+                  value={rate4P}
+                  onChange={e => setRate4P(e.target.value)}
+                  className="bg-background border-border text-xs"
+                />
+              </div>
             </div>
           </div>
           

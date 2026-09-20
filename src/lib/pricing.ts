@@ -49,9 +49,9 @@ export function calculateDynamicCost(
     return { cost: 0, minutesUsed };
   }
 
-  // Dynamic PS5, Pool, Snooker & Multi-player Pricing Calculation
-  const isMultiplayerType = station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('multi');
-  if (isMultiplayerType || station.player_rates || numPlayers > 1) {
+  // Dynamic Sim Racing, VR 30-min Package & Multiplayer Pricing Calculation
+  const isMultiplayerType = station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('sim') || station.type.includes('vr') || station.type.includes('multi');
+  if (isMultiplayerType || station.player_rates || station.rate_30min || numPlayers > 1) {
     const players = Math.min(Math.max(1, numPlayers), 4);
     
     // Determine effective hourly rate based on station config or default multipliers (1P: 100%, 2P: 140%, 3P: 180%, 4P: 220%)
@@ -62,13 +62,20 @@ export function calculateDynamicCost(
     const effectiveHourly = customHourly 
       ?? (station.type.startsWith('ps5') && matrixHourly ? matrixHourly : Math.round(station.hourly_rate * (defaultMultipliers[players] || 1.0)));
 
+    // Handle 30-min flat rate stations (Sim Racing, VR)
+    if (station.rate_30min && station.rate_30min > 0 && billableMins <= 30 && players === 1) {
+      return { cost: station.rate_30min, minutesUsed };
+    }
+
     const hours = Math.floor(billableMins / 60);
     const remainingMins = billableMins % 60;
     
     let totalCost = hours * effectiveHourly;
     
     if (remainingMins > 0) {
-      if (station.type.startsWith('ps5') && !customHourly) {
+      if (station.rate_30min && remainingMins <= 30 && players === 1) {
+        totalCost += station.rate_30min;
+      } else if (station.type.startsWith('ps5') && !customHourly) {
         // For standard PS5, look up the 5-min step matrix chunk or pro-rate intermediate minutes
         const chunks = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
         const matchedChunk = chunks.find(c => c >= remainingMins) || 60;

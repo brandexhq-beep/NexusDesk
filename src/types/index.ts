@@ -25,6 +25,7 @@ export interface Station {
   name: string;
   type: StationType;
   hourly_rate: number;
+  rate_30min?: number;
   status: StationStatus;
   overtime_block_minutes: number;
   grace_period_minutes: number;
