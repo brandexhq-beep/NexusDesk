@@ -147,12 +147,12 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         let newWalletBalance = customer.wallet_balance || 0;
         let transactionNote = `Session at ${station.name}`;
 
-        if (paymentMode === 'wallet') {
+        if (paymentMode === 'wallet' || paymentMode === 'mixed') {
           if (customer.wallet_balance >= bill.total) {
             newWalletBalance = customer.wallet_balance - bill.total;
-            transactionNote = `Session at ${station.name} (Wallet)`;
+            transactionNote = `Session at ${station.name} (${paymentMode === 'wallet' ? 'Wallet' : 'Mixed'})`;
           } else {
-            const walletPaid = customer.wallet_balance;
+            const walletPaid = Math.max(0, customer.wallet_balance);
             const cashRemainder = bill.total - walletPaid;
             newWalletBalance = 0;
             const sym = settings?.currency_symbol || '₹';
