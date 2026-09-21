@@ -51,20 +51,26 @@ export function calculateDynamicCost(
 
   // Dynamic Sim Racing, VR 30-min Package & Multiplayer Pricing Calculation
   const isMultiplayerType = station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('sim') || station.type.includes('vr') || station.type.includes('multi');
-  if (isMultiplayerType || station.player_rates || station.rate_30min || numPlayers > 1) {
+  if (isMultiplayerType || station.player_rates || station.player_rates_30min || station.rate_30min || numPlayers > 1) {
     const players = Math.min(Math.max(1, numPlayers), 4);
     
     // Determine effective hourly rate based on station config or default multipliers (1P: 100%, 2P: 140%, 3P: 180%, 4P: 220%)
     const defaultMultipliers: Record<number, number> = { 1: 1.0, 2: 1.4, 3: 1.8, 4: 2.2 };
     const customHourly = station.player_rates?.[players];
+    const custom30Min = station.player_rates_30min?.[players];
     const matrixHourly = PS5_PRICING_MATRIX[60]?.[players];
     
     const effectiveHourly = customHourly 
       ?? (station.type.startsWith('ps5') && matrixHourly ? matrixHourly : Math.round(station.hourly_rate * (defaultMultipliers[players] || 1.0)));
 
-    // Handle 30-min flat rate stations (Sim Racing, VR)
-    if (station.rate_30min && station.rate_30min > 0 && billableMins <= 30 && players === 1) {
-      return { cost: station.rate_30min, minutesUsed };
+    // Handle flat 30-min rate if total billable time <= 30 mins
+    if (billableMins <= 30) {
+      if (custom30Min && custom30Min > 0) {
+        return { cost: custom30Min, minutesUsed };
+      }
+      if (station.rate_30min && station.rate_30min > 0 && players === 1) {
+        return { cost: station.rate_30min, minutesUsed };
+      }
     }
 
     const hours = Math.floor(billableMins / 60);
@@ -73,7 +79,9 @@ export function calculateDynamicCost(
     let totalCost = hours * effectiveHourly;
     
     if (remainingMins > 0) {
-      if (station.rate_30min && remainingMins <= 30 && players === 1) {
+      if (remainingMins <= 30 && custom30Min && custom30Min > 0) {
+        totalCost += custom30Min;
+      } else if (station.rate_30min && remainingMins <= 30 && players === 1) {
         totalCost += station.rate_30min;
       } else if (station.type.startsWith('ps5') && !customHourly) {
         // For standard PS5, look up the 5-min step matrix chunk or pro-rate intermediate minutes

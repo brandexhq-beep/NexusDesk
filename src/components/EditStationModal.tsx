@@ -26,6 +26,11 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
   const [rate3P, setRate3P] = useState('');
   const [rate4P, setRate4P] = useState('');
 
+  const [rate30m1P, setRate30m1P] = useState('');
+  const [rate30m2P, setRate30m2P] = useState('');
+  const [rate30m3P, setRate30m3P] = useState('');
+  const [rate30m4P, setRate30m4P] = useState('');
+
   useEffect(() => {
     db.games.getAll().then(setGames);
   }, []);
@@ -40,6 +45,11 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
       setRate2P(station.player_rates?.[2]?.toString() || '');
       setRate3P(station.player_rates?.[3]?.toString() || '');
       setRate4P(station.player_rates?.[4]?.toString() || '');
+
+      setRate30m1P(station.player_rates_30min?.[1]?.toString() || station.rate_30min?.toString() || '');
+      setRate30m2P(station.player_rates_30min?.[2]?.toString() || '');
+      setRate30m3P(station.player_rates_30min?.[3]?.toString() || '');
+      setRate30m4P(station.player_rates_30min?.[4]?.toString() || '');
     }
   }, [station]);
 
@@ -55,13 +65,20 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
       if (rate3P) player_rates[3] = Number(rate3P);
       if (rate4P) player_rates[4] = Number(rate4P);
 
+      const player_rates_30min: Record<number, number> = {};
+      if (rate30m1P) player_rates_30min[1] = Number(rate30m1P);
+      if (rate30m2P) player_rates_30min[2] = Number(rate30m2P);
+      if (rate30m3P) player_rates_30min[3] = Number(rate30m3P);
+      if (rate30m4P) player_rates_30min[4] = Number(rate30m4P);
+
       await db.stations.update(station.id, {
         name,
         hourly_rate: p1Rate,
-        rate_30min: rate30m ? Number(rate30m) : undefined,
+        rate_30min: rate30m1P ? Number(rate30m1P) : (rate30m ? Number(rate30m) : undefined),
         grace_period_minutes: Number(gracePeriod),
         installed_games: installedGames,
-        player_rates
+        player_rates,
+        player_rates_30min: Object.keys(player_rates_30min).length > 0 ? player_rates_30min : undefined,
       });
       onUpdate();
       onClose();
@@ -105,63 +122,89 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>1 Player Hourly Rate (Base)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">₹</span>
+          <div className="space-y-2 pt-2 border-t border-white/5">
+            <Label className="text-xs font-bold uppercase tracking-wider text-emerald-400">30-Min Rate Matrix (₹ / 30 mins)</Label>
+            <div className="grid grid-cols-4 gap-2">
+              <div>
+                <span className="text-[10px] text-muted-foreground block mb-1">1 Pax</span>
                 <Input 
-                  type="number" min="0" step="1" 
-                  value={hourlyRate} 
-                  onChange={(e) => setHourlyRate(e.target.value)} 
-                  className="bg-background border-border pl-7"
+                  type="number" min="0"
+                  placeholder="e.g. 100"
+                  value={rate30m1P}
+                  onChange={e => setRate30m1P(e.target.value)}
+                  className="bg-background border-border text-xs"
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label>30-Min Rate (Optional)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">₹</span>
+              <div>
+                <span className="text-[10px] text-muted-foreground block mb-1">2 Pax</span>
                 <Input 
-                  type="number" min="0" step="1" 
+                  type="number" min="0"
+                  placeholder="e.g. 100"
+                  value={rate30m2P}
+                  onChange={e => setRate30m2P(e.target.value)}
+                  className="bg-background border-border text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block mb-1">3 Pax</span>
+                <Input 
+                  type="number" min="0"
+                  placeholder="e.g. 150"
+                  value={rate30m3P}
+                  onChange={e => setRate30m3P(e.target.value)}
+                  className="bg-background border-border text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block mb-1">4 Pax</span>
+                <Input 
+                  type="number" min="0"
                   placeholder="e.g. 200"
-                  value={rate30m} 
-                  onChange={(e) => setRate30m(e.target.value)} 
-                  className="bg-background border-border pl-7"
+                  value={rate30m4P}
+                  onChange={e => setRate30m4P(e.target.value)}
+                  className="bg-background border-border text-xs"
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground">Used for 30-min flat rate (VR / Sim Racing).</p>
             </div>
           </div>
 
           <div className="space-y-2 pt-2 border-t border-white/5">
-            <Label className="text-xs font-bold uppercase tracking-wider text-indigo-400">Multiplayer Hourly Rate Matrix (₹ / Hr)</Label>
-            <div className="grid grid-cols-3 gap-2">
+            <Label className="text-xs font-bold uppercase tracking-wider text-indigo-400">1-Hour Rate Matrix (₹ / Hr)</Label>
+            <div className="grid grid-cols-4 gap-2">
               <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">2 Players</span>
+                <span className="text-[10px] text-muted-foreground block mb-1">1 Pax</span>
+                <Input 
+                  type="number" min="0" step="1" 
+                  value={hourlyRate} 
+                  onChange={(e) => setHourlyRate(e.target.value)} 
+                  className="bg-background border-border text-xs"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block mb-1">2 Pax</span>
                 <Input 
                   type="number" min="0"
-                  placeholder="e.g. 280"
+                  placeholder="e.g. 180"
                   value={rate2P}
                   onChange={e => setRate2P(e.target.value)}
                   className="bg-background border-border text-xs"
                 />
               </div>
               <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">3 Players</span>
+                <span className="text-[10px] text-muted-foreground block mb-1">3 Pax</span>
                 <Input 
                   type="number" min="0"
-                  placeholder="e.g. 380"
+                  placeholder="e.g. 220"
                   value={rate3P}
                   onChange={e => setRate3P(e.target.value)}
                   className="bg-background border-border text-xs"
                 />
               </div>
               <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">4 Players</span>
+                <span className="text-[10px] text-muted-foreground block mb-1">4 Pax</span>
                 <Input 
                   type="number" min="0"
-                  placeholder="e.g. 450"
+                  placeholder="e.g. 250"
                   value={rate4P}
                   onChange={e => setRate4P(e.target.value)}
                   className="bg-background border-border text-xs"

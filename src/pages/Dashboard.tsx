@@ -134,7 +134,7 @@ export function Dashboard() {
         <div className="text-muted-foreground">Loading stations...</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredStations.map(station => (
+          {[...filteredStations].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(station => (
             <StationCard 
               key={station.id} 
               station={station} 

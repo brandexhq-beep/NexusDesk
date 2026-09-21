@@ -31,6 +31,8 @@ export interface Station {
   grace_period_minutes: number;
   installed_games?: string[];
   player_rates?: Record<number, number>;
+  player_rates_30min?: Record<number, number>;
+  sort_order?: number;
 }
 
 export interface Customer {

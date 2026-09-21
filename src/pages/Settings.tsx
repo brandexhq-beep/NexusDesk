@@ -6,13 +6,25 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle, RefreshCw, Loader2, ShieldAlert } from 'lucide-react';
 import { PricingRuleModal } from '../components/PricingRuleModal';
+import { ConfirmPasswordModal } from '../components/ConfirmPasswordModal';
 import { QRCodeCanvas } from 'qrcode.react';
 import { toast } from 'sonner';
 
 export function Settings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => Promise<void>;
+  }>({
+    open: false,
+    title: '',
+    description: '',
+    onConfirm: async () => {}
+  });
   const [formData, setFormData] = useState({
     cafe_name: '',
     cafe_logo_url: '',
@@ -996,11 +1008,100 @@ export function Settings() {
         </TabsContent>
       </Tabs>
 
+      {/* Danger Zone: Data Reset & System Wipe */}
+      <Card className="bg-red-950/20 backdrop-blur-md border-red-500/30 mt-8">
+        <CardHeader>
+          <CardTitle className="text-red-400 flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-red-500" /> Danger Zone & System Reset
+          </CardTitle>
+          <CardDescription className="text-xs text-red-400/70">
+            Permanently clear sessions, revenue reports, or customer directories. Password verification required.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl border border-red-500/20 bg-black/40 space-y-2">
+              <h4 className="font-bold text-sm text-foreground">Reset Session & Report Data</h4>
+              <p className="text-[11px] text-muted-foreground">Deletes all past gaming sessions, sales logs, and financial reports while preserving customer profiles & stations.</p>
+              <Button 
+                onClick={() => setConfirmModal({
+                  open: true,
+                  title: 'Wipe Session & Report History',
+                  description: 'This will permanently remove all revenue, sales logs, and session history from reports.',
+                  onConfirm: async () => {
+                    await db.sessions.clear();
+                    toast.success('All reports and session records have been wiped successfully.');
+                  }
+                })}
+                variant="outline" 
+                className="w-full text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 mt-2"
+              >
+                Clear Reports & Sessions
+              </Button>
+            </div>
+
+            <div className="p-4 rounded-xl border border-red-500/20 bg-black/40 space-y-2">
+              <h4 className="font-bold text-sm text-foreground">Reset Customer Directory</h4>
+              <p className="text-[11px] text-muted-foreground">Deletes all saved customer accounts, wallet balances, and accumulated loyalty points.</p>
+              <Button 
+                onClick={() => setConfirmModal({
+                  open: true,
+                  title: 'Wipe Customer Database',
+                  description: 'This will delete all saved customer accounts, phone records, and wallet balances.',
+                  onConfirm: async () => {
+                    await db.customers.clear();
+                    toast.success('Customer directory cleared successfully.');
+                  }
+                })}
+                variant="outline" 
+                className="w-full text-xs border-red-500/30 text-red-400 hover:bg-red-500/10 mt-2"
+              >
+                Clear Customer Data
+              </Button>
+            </div>
+
+            <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 space-y-2">
+              <h4 className="font-bold text-sm text-red-400">Full System Reset (Factory Wipe)</h4>
+              <p className="text-[11px] text-red-300/80">Wipes all data including sessions, customer directory, custom menu items, and food stock to factory state.</p>
+              <Button 
+                onClick={() => setConfirmModal({
+                  open: true,
+                  title: 'Perform Full Factory Reset',
+                  description: 'CRITICAL: This will completely reset the database to factory settings.',
+                  onConfirm: async () => {
+                    await Promise.all([
+                      db.sessions.clear(),
+                      db.customers.clear(),
+                      db.menu.clear(),
+                      db.whatsappQueue.clear()
+                    ]);
+                    toast.success('Full system reset completed successfully.');
+                    window.location.reload();
+                  }
+                })}
+                className="w-full text-xs bg-red-600 hover:bg-red-700 text-white font-bold mt-2"
+              >
+                Factory Reset All Data
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <PricingRuleModal 
         rule={editingRule} 
         isOpen={isRuleModalOpen} 
         onClose={() => setIsRuleModalOpen(false)} 
         onSave={loadSettings} 
+      />
+
+      <ConfirmPasswordModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        description={confirmModal.description}
+        correctPassword={formData.admin_password || 'admin'}
+        onClose={() => setConfirmModal(prev => ({ ...prev, open: false }))}
+        onConfirm={confirmModal.onConfirm}
       />
 
       <div className="pt-8 text-center">

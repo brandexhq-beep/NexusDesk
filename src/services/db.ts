@@ -57,46 +57,15 @@ const createBrowserMockStorage = () => {
   };
 
   const defaultStations: Station[] = [
-    { id: '1', name: 'PS5 Unit 1', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, installed_games: ['g1', 'g2', 'g3', 'g4', 'g9', 'g10'] },
-    { id: '2', name: 'PS5 Unit 2', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, installed_games: ['g1', 'g2', 'g3', 'g4', 'g9', 'g10'] },
-    { id: '3', name: 'PS5 Unit 3', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, installed_games: [
-      'g1',  // WWE 2K26
-      'g2',  // Asphalt Legends
-      'g3',  // Split Fiction
-      'g4',  // GTA 5
-      'g5',  // God of War
-      'g6',  // Spider-Man 2
-      'g7',  // Ghost of Yōtei
-      'g9',  // Mortal Kombat 2
-      'g10', // FC 26
-      'g11'  // Unravel Two (Unique)
-    ] },
-    { id: '4', name: 'PS5 Unit 4', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, installed_games: [
-      'g1',  // WWE 2K26
-      'g2',  // Asphalt Legends
-      'g3',  // Split Fiction
-      'g4',  // GTA 5
-      'g5',  // God of War
-      'g6',  // Spider-Man 2
-      'g7',  // Ghost of Yōtei
-      'g8',  // Gran Turismo 7
-      'g12', // It Takes Two (Unique)
-      'g13'  // Uncharted (Unique)
-    ] },
-    { id: '5', name: 'PS5 Unit 5', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, installed_games: [
-      'g1',  // WWE 2K26
-      'g2',  // Asphalt Legends
-      'g3',  // Split Fiction
-      'g4',  // GTA 5
-      'g8',  // Gran Turismo 7
-      'g9',  // Mortal Kombat 2
-      'g10', // FC 26
-      'g14', // Mortal Kombat 1 (Unique)
-      'g15', // A Way Out (Unique)
-      'g16'  // MotoGP (Unique)
-    ] },
-    { id: '6', name: 'Sim Racing',  type: 'ps5_simracing', hourly_rate: 300, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5 },
-    { id: '7', name: 'Snooker 1',  type: 'snooker', hourly_rate: 150, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5 },
+    { id: '1', name: 'PS5 Unit 1', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 1, installed_games: ['g1', 'g2', 'g3', 'g4', 'g9', 'g10'] },
+    { id: '2', name: 'PS5 Unit 2', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 2, installed_games: ['g1', 'g2', 'g3', 'g4', 'g9', 'g10'] },
+    { id: '3', name: 'PS5 Unit 3', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 3, installed_games: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g9', 'g10', 'g11'] },
+    { id: '4', name: 'PS5 Unit 4', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 4, installed_games: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g12', 'g13'] },
+    { id: '5', name: 'PS5 Unit 5', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 5, installed_games: ['g1', 'g2', 'g3', 'g4', 'g8', 'g9', 'g10', 'g14', 'g15', 'g16'] },
+    { id: '6', name: 'Sim Racing',  type: 'ps5_simracing', hourly_rate: 300, rate_30min: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 6 },
+    { id: '7', name: 'VR Gaming',   type: 'ps5_vr',        hourly_rate: 300, rate_30min: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 7 },
+    { id: '8', name: 'Snooker 1',  type: 'snooker',       hourly_rate: 200, rate_30min: 100, player_rates: { 2: 200, 4: 300 }, player_rates_30min: { 2: 100, 4: 200 }, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 8 },
+    { id: '9', name: 'Pool Table 1', type: 'pool',        hourly_rate: 180, rate_30min: 100, player_rates: { 2: 180, 4: 250 }, player_rates_30min: { 2: 100, 4: 150 }, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 9 },
   ];
 
   const defaultGames: Game[] = [
@@ -120,20 +89,24 @@ const createBrowserMockStorage = () => {
 
   const defaultMenu: MenuItem[] = [
     // GAMING SERVICES (Packages)
-    { id: 'm1', seed_id: 'ps5-solo-1hr',        name: 'Solo',              category: 'package', subcategory: 'PS5 GAMING',   package_minutes: 60,  price: 200, player_count: 1, active: true },
-    { id: 'm2', seed_id: 'ps5-multi-2-1hr',     name: 'Multi (2)',         category: 'package', subcategory: 'PS5 GAMING',   package_minutes: 60,  price: 280, player_count: 2, active: true },
-    { id: 'm3', seed_id: 'ps5-multi-3-1hr',     name: 'Multi (3)',         category: 'package', subcategory: 'PS5 GAMING',   package_minutes: 60,  price: 380, player_count: 3, active: true },
-    { id: 'm4', seed_id: 'ps5-multi-4-1hr',     name: 'Multi (4)',         category: 'package', subcategory: 'PS5 GAMING',   package_minutes: 60,  price: 450, player_count: 4, active: true },
+    { id: 'm1', seed_id: 'ps5-solo-1hr',        name: 'Solo (1 Hr)',       category: 'package', subcategory: 'PS5 GAMING',   package_minutes: 60,  price: 200, player_count: 1, active: true },
+    { id: 'm2', seed_id: 'ps5-multi-2-1hr',     name: 'Multi 2P (1 Hr)',   category: 'package', subcategory: 'PS5 GAMING',   package_minutes: 60,  price: 280, player_count: 2, active: true },
+    { id: 'm3', seed_id: 'ps5-multi-3-1hr',     name: 'Multi 3P (1 Hr)',   category: 'package', subcategory: 'PS5 GAMING',   package_minutes: 60,  price: 380, player_count: 3, active: true },
+    { id: 'm4', seed_id: 'ps5-multi-4-1hr',     name: 'Multi 4P (1 Hr)',   category: 'package', subcategory: 'PS5 GAMING',   package_minutes: 60,  price: 450, player_count: 4, active: true },
     { id: 'm5', seed_id: 'vr-standard-30min',   name: 'Standard (30 Min)', category: 'package', subcategory: 'VR GAMING',    package_minutes: 30,  price: 200, player_count: 1, active: true },
-    { id: 'm6', seed_id: 'vr-standard-1hr',     name: 'Standard',          category: 'package', subcategory: 'VR GAMING',    package_minutes: 60,  price: 300, player_count: 1, active: true },
+    { id: 'm6', seed_id: 'vr-standard-1hr',     name: 'Standard (1 Hr)',   category: 'package', subcategory: 'VR GAMING',    package_minutes: 60,  price: 300, player_count: 1, active: true },
     { id: 'm7', seed_id: 'sim-racing-30min',    name: 'Standard (30 Min)', category: 'package', subcategory: 'SIM RACING',   package_minutes: 30,  price: 200, player_count: 1, active: true },
-    { id: 'm8', seed_id: 'sim-racing-1hr',      name: 'Standard',          category: 'package', subcategory: 'SIM RACING',   package_minutes: 60,  price: 300, player_count: 1, active: true },
-    { id: 'm9', seed_id: 'snooker-pair-1hr',    name: 'Pair',              category: 'package', subcategory: 'SNOOKER',      package_minutes: 60,  price: 200, player_count: 2, active: true },
-    { id: 'm10', seed_id: 'snooker-group-1hr',   name: 'Group',             category: 'package', subcategory: 'SNOOKER',      package_minutes: 60,  price: 300, player_count: 4, active: true },
-    { id: 'm11', seed_id: 'pool-pair-1hr',       name: 'Pair',              category: 'package', subcategory: 'POOL TABLE',   package_minutes: 60,  price: 180, player_count: 2, active: true },
-    { id: 'm12', seed_id: 'pool-group-1hr',      name: 'Group',             category: 'package', subcategory: 'POOL TABLE',   package_minutes: 60,  price: 250, player_count: 4, active: true },
-    { id: 'm13', seed_id: 'board-games-pair-1hr',name: 'Pair',              category: 'package', subcategory: 'BOARD GAMES',  package_minutes: 60,  price: 150, player_count: 2, active: true },
-    { id: 'm14', seed_id: 'board-games-group-1hr',name:'Group',             category: 'package', subcategory: 'BOARD GAMES',  package_minutes: 60,  price: 250, player_count: 4, active: true },
+    { id: 'm8', seed_id: 'sim-racing-1hr',      name: 'Standard (1 Hr)',   category: 'package', subcategory: 'SIM RACING',   package_minutes: 60,  price: 300, player_count: 1, active: true },
+    { id: 'm9_30', seed_id: 'snooker-pair-30min',name: 'Pair (30 Min)',    category: 'package', subcategory: 'SNOOKER',      package_minutes: 30,  price: 100, player_count: 2, active: true },
+    { id: 'm9', seed_id: 'snooker-pair-1hr',    name: 'Pair (1 Hr)',       category: 'package', subcategory: 'SNOOKER',      package_minutes: 60,  price: 200, player_count: 2, active: true },
+    { id: 'm10_30',seed_id: 'snooker-group-30min',name:'Group (30 Min)',   category: 'package', subcategory: 'SNOOKER',      package_minutes: 30,  price: 200, player_count: 4, active: true },
+    { id: 'm10', seed_id: 'snooker-group-1hr',   name: 'Group (1 Hr)',      category: 'package', subcategory: 'SNOOKER',      package_minutes: 60,  price: 300, player_count: 4, active: true },
+    { id: 'm11_30',seed_id: 'pool-pair-30min',   name: 'Pair (30 Min)',     category: 'package', subcategory: 'POOL TABLE',   package_minutes: 30,  price: 100, player_count: 2, active: true },
+    { id: 'm11', seed_id: 'pool-pair-1hr',       name: 'Pair (1 Hr)',       category: 'package', subcategory: 'POOL TABLE',   package_minutes: 60,  price: 180, player_count: 2, active: true },
+    { id: 'm12_30',seed_id: 'pool-group-30min',  name: 'Group (30 Min)',    category: 'package', subcategory: 'POOL TABLE',   package_minutes: 30,  price: 150, player_count: 4, active: true },
+    { id: 'm12', seed_id: 'pool-group-1hr',      name: 'Group (1 Hr)',      category: 'package', subcategory: 'POOL TABLE',   package_minutes: 60,  price: 250, player_count: 4, active: true },
+    { id: 'm13', seed_id: 'board-games-pair-1hr',name: 'Pair (1 Hr)',       category: 'package', subcategory: 'BOARD GAMES',  package_minutes: 60,  price: 150, player_count: 2, active: true },
+    { id: 'm14', seed_id: 'board-games-group-1hr',name:'Group (1 Hr)',      category: 'package', subcategory: 'BOARD GAMES',  package_minutes: 60,  price: 250, player_count: 4, active: true },
 
     // FOOD MENU
     { id: 'm15', seed_id: 'food-french-fries',        name: 'French Fries',       category: 'snack', subcategory: 'FRIES / SNACKS',    price: 80,  stock_quantity: 100, active: true },
@@ -171,6 +144,9 @@ const createBrowserMockStorage = () => {
       const items = getStored(key, defaults);
       const next = items.filter((i: T) => i.id !== id);
       setStored(key, next);
+    },
+    clear: async (): Promise<void> => {
+      setStored(key, []);
     },
   });
 
@@ -279,6 +255,7 @@ export const db = {
       return api.db.customers.add(newCustomer);
     },
     update: async (id: string, data: Partial<Customer>): Promise<void> => api.db.customers.update(id, data),
+    clear:  async (): Promise<void> => api.db.customers.clear(),
   },
   sessions: {
     getAll:              async (): Promise<Session[]>                      => api.db.sessions.getAll(),
@@ -288,6 +265,7 @@ export const db = {
       return api.db.sessions.add(newSession);
     },
     update: async (id: string, data: Partial<Session>): Promise<void> => api.db.sessions.update(id, data),
+    clear:  async (): Promise<void> => api.db.sessions.clear(),
   },
   menu: {
     getAll:  async (): Promise<MenuItem[]> => api.db.menu.getAll(),
@@ -297,6 +275,7 @@ export const db = {
     },
     update:  async (id: string, data: Partial<MenuItem>): Promise<void> => api.db.menu.update(id, data),
     delete:  async (id: string): Promise<void>                          => api.db.menu.delete(id),
+    clear:   async (): Promise<void>                          => api.db.menu.clear(),
   },
   transactions: {
     getAll: async (): Promise<Transaction[]> => api.db.transactions.getAll(),

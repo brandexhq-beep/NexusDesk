@@ -115,66 +115,46 @@ export function PricingChartModal({ open, onClose }: PricingChartModalProps) {
           {/* Pool & Snooker Rate Chart */}
           <TabsContent value="pool" className="space-y-4 pt-3">
             <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-300">
-              🎱 <strong>Multiplayer Pool & Snooker Rates:</strong> Charges are calculated pro-rata per minute based on active player count.
+              🎱 <strong>Pool & Snooker Rate Chart:</strong> 30-minute and 1-hour pricing per player count (2 Pax vs 4 Pax).
             </div>
 
-            <div className="overflow-x-auto border border-white/10 rounded-lg bg-black/20">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-black/40 text-muted-foreground text-xs uppercase border-b border-white/10">
-                  <tr>
-                    <th className="px-4 py-3">Player Count</th>
-                    <th className="px-4 py-3 text-center">Rate Scale</th>
-                    <th className="px-4 py-3 text-center">Est. 30 Mins</th>
-                    <th className="px-4 py-3 text-center">Est. 1 Hour</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 font-mono text-xs">
-                  <tr className="hover:bg-white/5">
-                    <td className="px-4 py-2.5 font-bold font-sans text-emerald-300">1 Player (Solo)</td>
-                    <td className="px-4 py-2.5 text-center">100% Base Rate</td>
-                    <td className="px-4 py-2.5 text-center">{currencyStr} 75</td>
-                    <td className="px-4 py-2.5 text-center">{currencyStr} 150</td>
-                  </tr>
-                  <tr className="hover:bg-white/5">
-                    <td className="px-4 py-2.5 font-bold font-sans text-emerald-300">2 Players (Duo)</td>
-                    <td className="px-4 py-2.5 text-center">140% Base Rate</td>
-                    <td className="px-4 py-2.5 text-center">{currencyStr} 105</td>
-                    <td className="px-4 py-2.5 text-center">{currencyStr} 210</td>
-                  </tr>
-                  <tr className="hover:bg-white/5">
-                    <td className="px-4 py-2.5 font-bold font-sans text-emerald-300">3 Players</td>
-                    <td className="px-4 py-2.5 text-center">180% Base Rate</td>
-                    <td className="px-4 py-2.5 text-center">{currencyStr} 135</td>
-                    <td className="px-4 py-2.5 text-center">{currencyStr} 270</td>
-                  </tr>
-                  <tr className="hover:bg-white/5">
-                    <td className="px-4 py-2.5 font-bold font-sans text-emerald-300">4+ Players (Squad)</td>
-                    <td className="px-4 py-2.5 text-center">220% Base Rate</td>
-                    <td className="px-4 py-2.5 text-center">{currencyStr} 165</td>
-                    <td className="px-4 py-2.5 text-center">{currencyStr} 330</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {poolSnookerStations.length > 0 && (
-              <div className="space-y-2 mt-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Configured Pool & Snooker Tables</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {poolSnookerStations.map(s => (
-                    <div key={s.id} className="p-3 rounded-lg border border-white/10 bg-white/5 flex justify-between items-center text-xs">
-                      <div>
-                        <div className="font-semibold text-foreground">{s.name}</div>
-                        <div className="text-[10px] text-muted-foreground uppercase">{s.type}</div>
-                      </div>
-                      <div className="font-mono font-bold text-emerald-300">
-                        {currencyStr} {s.hourly_rate}/hr
-                      </div>
+            <div className="space-y-3">
+              {poolSnookerStations.map(s => {
+                const r30 = s.player_rates_30min || {};
+                const r60 = s.player_rates || {};
+                return (
+                  <div key={s.id} className="border border-white/10 rounded-lg bg-black/20 p-3 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-bold text-sm text-emerald-300">{s.name} ({s.type.toUpperCase()})</h4>
+                      <span className="text-xs font-mono text-muted-foreground">Base: {currencyStr}{s.hourly_rate}/hr</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-black/40 text-muted-foreground uppercase border-b border-white/10">
+                          <tr>
+                            <th className="px-3 py-1.5">Pax / Duration</th>
+                            <th className="px-3 py-1.5 text-center">30 Mins</th>
+                            <th className="px-3 py-1.5 text-center">1 Hour</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 font-mono">
+                          <tr>
+                            <td className="px-3 py-1.5 font-sans font-medium text-white">2 Pax</td>
+                            <td className="px-3 py-1.5 text-center font-bold text-emerald-400">{currencyStr} {r30[2] ?? Math.round(s.hourly_rate * 0.7)}</td>
+                            <td className="px-3 py-1.5 text-center font-bold text-emerald-400">{currencyStr} {r60[2] ?? Math.round(s.hourly_rate * 1.4)}</td>
+                          </tr>
+                          <tr>
+                            <td className="px-3 py-1.5 font-sans font-medium text-white">4 Pax</td>
+                            <td className="px-3 py-1.5 text-center font-bold text-emerald-400">{currencyStr} {r30[4] ?? Math.round(s.hourly_rate * 1.0)}</td>
+                            <td className="px-3 py-1.5 text-center font-bold text-emerald-400">{currencyStr} {r60[4] ?? Math.round(s.hourly_rate * 2.2)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </TabsContent>
 
           {/* All Stations */}
