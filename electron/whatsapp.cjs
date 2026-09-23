@@ -354,7 +354,17 @@ function startWhatsAppClient(ipcMain) {
         const chatId = `${normalized}@c.us`;
         const dedupKey = eventId ? `event_${eventId}` : `${chatId}_${message || ''}`;
 
-        // Event-level or memory deduplication guard
+        // Durable database-level event idempotency guard
+        if (eventId) {
+            const existingQueue = jsonStore.getAll('whatsapp_queue');
+            const duplicateItem = existingQueue.find(item => item.eventId === eventId || item.id === `msg_${eventId}`);
+            if (duplicateItem) {
+                console.log(`[WhatsApp] Durable DB event duplicate suppressed for ${chatId} (eventId: ${eventId})`);
+                return { success: true, deduplicated: true };
+            }
+        }
+
+        // Memory deduplication guard for non-eventId messages
         if (isDuplicate(chatId, dedupKey)) {
             console.log(`[WhatsApp] Idempotent duplicate event/message suppressed for ${chatId} (key: ${dedupKey})`);
             return { success: true, deduplicated: true };
@@ -436,6 +446,33 @@ function startWhatsAppClient(ipcMain) {
         }
 
         try {
+            // Step 1: Pre-send readiness check
+            if (!isClientReady || !client) {
+                console.warn('[WhatsApp] Queue worker encountered client unready — pausing worker execution.');
+                isProcessingQueue = false;
+                return;
+            }
+
+            // Step 2: Validate recipient registration if phone format is valid
+            try {
+                const isRegistered = await sendWithTimeout(client.isRegisteredUser(itemToProcess.chatId), 15000);
+                if (!isRegistered) {
+                    console.warn(`[WhatsApp] ✗ Number ${itemToProcess.chatId} is not registered on WhatsApp — marking permanent failure.`);
+                    jsonStore.update('whatsapp_queue', itemToProcess.id, {
+                        status: 'failed',
+                        completedAt: Date.now(),
+                        error: 'Phone number not registered on WhatsApp',
+                        errorCategory: 'Invalid Number',
+                        permanent: true,
+                        retryCount: (itemToProcess.retryCount || 0) + 1,
+                    });
+                    isProcessingQueue = false;
+                    return;
+                }
+            } catch (regErr) {
+                console.warn(`[WhatsApp] Could not verify registration for ${itemToProcess.chatId}: ${regErr.message}. Proceeding with send attempt.`);
+            }
+
             let media = null;
             if (itemToProcess.pdfBase64) {
                 const base64Data = itemToProcess.pdfBase64.split(',')[1] || itemToProcess.pdfBase64;
@@ -460,20 +497,37 @@ function startWhatsAppClient(ipcMain) {
             jsonStore.update('whatsapp_queue', itemToProcess.id, {
                 status: 'sent',
                 completedAt: Date.now(),
+                error: null,
+                errorCategory: null
             });
 
         } catch (error) {
             const errMsg = error.message || 'Unknown error';
+            const errorStack = error.stack ? error.stack.slice(0, 500) : null;
             console.error(`[WhatsApp] ✗ Failed to send to ${itemToProcess.chatId}:`, errMsg);
 
-            // Detect disconnection mid-send
-            if (
-                errMsg.includes('Session closed') ||
-                errMsg.includes('Target closed') ||
-                errMsg.includes('Protocol error') ||
-                errMsg.includes('Page crashed') ||
-                errMsg.includes('SendTimeout')
-            ) {
+            let errorCategory = 'Unknown WhatsApp error';
+            let isDisconnectError = false;
+
+            if (errMsg.includes('Session closed') || errMsg.includes('Target closed')) {
+                errorCategory = 'Session disconnected';
+                isDisconnectError = true;
+            } else if (errMsg.includes('Protocol error')) {
+                errorCategory = 'Protocol error';
+                isDisconnectError = true;
+            } else if (errMsg.includes('Page crashed')) {
+                errorCategory = 'Browser/Puppeteer error';
+                isDisconnectError = true;
+            } else if (errMsg.includes('SendTimeout')) {
+                errorCategory = 'Timeout';
+            } else if (errMsg.includes('Execution context was destroyed') || errMsg.includes('Navigating frame')) {
+                errorCategory = 'Browser/Puppeteer error';
+                isDisconnectError = true;
+            } else if (errMsg.includes('Evaluation failed')) {
+                errorCategory = 'Media file error';
+            }
+
+            if (isDisconnectError) {
                 isClientReady = false;
                 clientState = 'disconnected';
                 initError = `Connection lost during send: ${errMsg.slice(0, 80)}`;
@@ -484,19 +538,25 @@ function startWhatsAppClient(ipcMain) {
             try {
                 const currentItem = jsonStore.getById('whatsapp_queue', itemToProcess.id);
                 if (currentItem) {
-                    const newRetry = (currentItem.retryCount || 0) + 1;
+                    // Do not increment retry counter if the failure was purely due to client disconnection
+                    const isClientFailure = isDisconnectError && !isClientReady;
+                    const newRetry = isClientFailure ? (currentItem.retryCount || 0) : (currentItem.retryCount || 0) + 1;
+                    
                     if (newRetry >= 3) {
                         jsonStore.update('whatsapp_queue', itemToProcess.id, {
                             status: 'failed',
                             completedAt: Date.now(),
-                            error: errMsg.slice(0, 200),
+                            error: errMsg.slice(0, 250),
+                            errorCategory,
+                            errorStack,
                             retryCount: newRetry,
                         });
-                        console.warn(`[WhatsApp] Dropped ${itemToProcess.chatId} after 3 retries.`);
+                        console.warn(`[WhatsApp] Dropped ${itemToProcess.chatId} after 3 retries. Category: ${errorCategory}`);
                     } else {
                         jsonStore.update('whatsapp_queue', itemToProcess.id, {
                             retryCount: newRetry,
-                            lastError: errMsg.slice(0, 200),
+                            lastError: errMsg.slice(0, 250),
+                            errorCategory,
                             lastRetryAt: Date.now(),
                         });
                     }

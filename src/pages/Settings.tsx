@@ -969,12 +969,17 @@ export function Settings() {
                             <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold">✓ Sent</span>
                           )}
                           {item.status === 'failed' && (
-                            <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-bold">✗ Failed</span>
+                            <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-bold">
+                              ✗ Failed {item.errorCategory ? `(${item.errorCategory})` : ''}
+                            </span>
                           )}
                           {item.status === 'pending' && (
                             <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-bold animate-pulse">⏳ Pending</span>
                           )}
-                          {(item.retryCount || 0) > 0 && (
+                          {item.permanent && (
+                            <span className="text-[10px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-bold">Permanent Failure</span>
+                          )}
+                          {(item.retryCount || 0) > 0 && !item.permanent && (
                             <span className="flex items-center gap-1 text-[10px] bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded font-bold">
                               <AlertCircle className="w-3 h-3" /> Retry {item.retryCount}/3
                             </span>
@@ -982,6 +987,11 @@ export function Settings() {
                         </div>
                         <p className="text-xs text-muted-foreground truncate max-w-[400px]">{item.message}</p>
                         {item.pdfName && <p className="text-[10px] text-indigo-400 mt-1">📎 {item.pdfName}</p>}
+                        {(item.error || item.lastError) && (
+                          <p className="text-[11px] text-red-400/90 mt-1 bg-red-950/30 p-1.5 rounded border border-red-800/30 font-mono break-all max-w-[500px]">
+                            ⚠️ Reason: {item.errorCategory ? `[${item.errorCategory}] ` : ''}{item.error || item.lastError}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1 ml-4 shrink-0">
                         {(item.status === 'failed' || item.status === 'sent') && (
