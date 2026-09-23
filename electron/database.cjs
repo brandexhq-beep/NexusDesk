@@ -386,8 +386,24 @@ function initDatabase() {
         runSaraGamingSeed();
       }
     }
+  // Run startup reconciliation: align station status with active sessions
+  try {
+    const allStations = jsonStore.getAll('stations');
+    const allSessions = jsonStore.getAll('sessions');
+    const activeSessions = allSessions.filter(s => s.status === 'active');
+    const activeStationIds = new Set(activeSessions.map(s => s.station_id));
+
+    for (const st of allStations) {
+      if (activeStationIds.has(st.id) && st.status !== 'occupied') {
+        console.log(`[Reconciliation] Station "${st.name}" has active session but was marked "${st.status}". Repairing → "occupied".`);
+        jsonStore.update('stations', st.id, { status: 'occupied' });
+      } else if (!activeStationIds.has(st.id) && st.status === 'occupied') {
+        console.log(`[Reconciliation] Station "${st.name}" marked "occupied" but has no active session. Repairing → "free".`);
+        jsonStore.update('stations', st.id, { status: 'free' });
+      }
+    }
   } catch (err) {
-    console.error('[Seed] Sara Gaming Zone seed failed:', err.message);
+    console.error('[Reconciliation] Station status reconciliation failed:', err.message);
   }
 }
 
@@ -418,9 +434,24 @@ function setupIpcHandlers() {
   handleSafe('db:customers:add',      (_, item)   => jsonStore.add('customers', item));
   handleSafe('db:customers:update',   (_, id, d)  => jsonStore.update('customers', id, d));
 
-  // SESSIONS
+  // SESSIONS (Atomic Transactional Start & Stop)
   handleSafe('db:sessions:getAll',    ()          => jsonStore.getAll('sessions'));
-  handleSafe('db:sessions:add',       (_, item)   => jsonStore.add('sessions', item));
+  handleSafe('db:sessions:add',       (_, item)   => {
+    // Atomic Transaction: Ensure station is free and no active session exists
+    const startTx = db.transaction((sessionItem) => {
+      const activeSessions = jsonStore.getAll('sessions').filter(s => s.station_id === sessionItem.station_id && s.status === 'active');
+      if (activeSessions.length > 0) {
+        throw new Error(`Station already has an active session (Session ID: ${activeSessions[0].id}). Cannot create duplicate session.`);
+      }
+      // Insert session
+      jsonStore.add('sessions', sessionItem);
+      // Mark station occupied atomically
+      jsonStore.update('stations', sessionItem.station_id, { status: 'occupied' });
+      return sessionItem;
+    });
+
+    return startTx(item);
+  });
   handleSafe('db:sessions:update',    (_, id, d)  => jsonStore.update('sessions', id, d));
   handleSafe('db:sessions:getActiveByStation', (_, stationId) => {
     const sessions = jsonStore.getAll('sessions');

@@ -344,7 +344,7 @@ function startWhatsAppClient(ipcMain) {
     });
 
     // ── IPC: Send Invoice / Message ──────────────────────────────────────────
-    ipcMain.handle('whatsapp:sendInvoice', (_, { phone, message, pdfBase64, pdfName }) => {
+    ipcMain.handle('whatsapp:sendInvoice', (_, { phone, message, pdfBase64, pdfName, eventId }) => {
         const normalized = normalizePhone(phone);
         if (!normalized) {
             console.warn(`[WhatsApp] Invalid phone skipped: "${phone}"`);
@@ -352,25 +352,27 @@ function startWhatsAppClient(ipcMain) {
         }
 
         const chatId = `${normalized}@c.us`;
+        const dedupKey = eventId ? `event_${eventId}` : `${chatId}_${message || ''}`;
 
-        // Deduplication: don't queue exact same message to same number within 5 min
-        if (isDuplicate(chatId, message || '')) {
-            console.log(`[WhatsApp] Duplicate message to ${chatId} suppressed.`);
+        // Event-level or memory deduplication guard
+        if (isDuplicate(chatId, dedupKey)) {
+            console.log(`[WhatsApp] Idempotent duplicate event/message suppressed for ${chatId} (key: ${dedupKey})`);
             return { success: true, deduplicated: true };
         }
 
         jsonStore.add('whatsapp_queue', {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            id: eventId ? `msg_${eventId}` : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
             status: 'pending',
             retryCount: 0,
             chatId,
             message,
             pdfBase64,
             pdfName,
+            eventId: eventId || null,
             isPromo: false,
             timestamp: Date.now(),
         });
-        recordRecentSend(chatId, message || '');
+        recordRecentSend(chatId, dedupKey);
         return { success: true };
     });
 

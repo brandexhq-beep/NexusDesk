@@ -6,6 +6,20 @@ const { startWhatsAppClient, stopWhatsAppClient } = require('./whatsapp.cjs');
 
 let mainWindow;
 
+// ─── Single Instance Lock ───────────────────────────────────────────────────
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  console.warn('[App] Another instance of NexusDesk / Sara Gaming Zone is already running. Quitting duplicate process.');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 // ─── Global Error Guards ─────────────────────────────────────────────────────
 // Prevent WhatsApp / Puppeteer errors from crashing the entire Electron process.
 process.on('unhandledRejection', (reason) => {
