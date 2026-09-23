@@ -183,7 +183,8 @@ function runSaraGamingSeed() {
       overtime_block_minutes: 15,
       grace_period_minutes: 5,
       player_rates: ps5Rates,
-      installed_games: resolveIds(u4GameSeeds)
+      installed_games: resolveIds(u4GameSeeds),
+      sort_order: 4
     });
   }
 
@@ -197,14 +198,29 @@ function runSaraGamingSeed() {
       overtime_block_minutes: 15,
       grace_period_minutes: 5,
       player_rates: ps5Rates,
-      installed_games: resolveIds(u5GameSeeds)
+      installed_games: resolveIds(u5GameSeeds),
+      sort_order: 5
     });
   }
 
-  // Ensure default stations have their games installed if not yet customized
+  // Ensure default stations have logical sort_order and games installed
   const currentStations = jsonStore.getAll('stations');
   for (const st of currentStations) {
     const nameLower = (st.name || '').toLowerCase();
+    const updates = {};
+
+    // Auto-assign logical sort_order if missing or default 0
+    if (st.sort_order === undefined || st.sort_order === null) {
+      if (nameLower.includes('unit 1') || st.id === '1') updates.sort_order = 1;
+      else if (nameLower.includes('unit 2') || st.id === '2') updates.sort_order = 2;
+      else if (nameLower.includes('unit 3') || st.id === '3') updates.sort_order = 3;
+      else if (nameLower.includes('unit 4')) updates.sort_order = 4;
+      else if (nameLower.includes('unit 5')) updates.sort_order = 5;
+      else if (nameLower.includes('sim racing') || st.id === '4') updates.sort_order = 6;
+      else if (nameLower.includes('snooker 1') || st.id === '5') updates.sort_order = 7;
+      else if (nameLower.includes('snooker 2') || st.id === '6') updates.sort_order = 8;
+    }
+
     // Only backfill if installed_games is null/empty, preserving user customization
     if (!st.installed_games || st.installed_games.length === 0) {
       let updatedInstalled = null;
@@ -236,8 +252,12 @@ function runSaraGamingSeed() {
       }
 
       if (updatedInstalled && updatedInstalled.length > 0) {
-        jsonStore.update('stations', st.id, { installed_games: updatedInstalled });
+        updates.installed_games = updatedInstalled;
       }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      jsonStore.update('stations', st.id, updates);
     }
   }
 
@@ -362,12 +382,12 @@ function initDatabase() {
   if (stationsCount.count === 0) {
     const ps5Rates = { 1: 200, 2: 280, 3: 380, 4: 450 };
     const initialStations = [
-      { id: '1', name: 'PS5 Unit 1', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, player_rates: ps5Rates },
-      { id: '2', name: 'PS5 Unit 2', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, player_rates: ps5Rates },
-      { id: '3', name: 'PS5 Unit 3', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, player_rates: ps5Rates },
-      { id: '4', name: 'Sim Racing',  type: 'ps5_simracing', hourly_rate: 300, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5 },
-      { id: '5', name: 'Snooker 1',  type: 'snooker', hourly_rate: 150, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5 },
-      { id: '6', name: 'Snooker 2',  type: 'snooker', hourly_rate: 150, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5 },
+      { id: '1', name: 'PS5 Unit 1', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, player_rates: ps5Rates, sort_order: 1 },
+      { id: '2', name: 'PS5 Unit 2', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, player_rates: ps5Rates, sort_order: 2 },
+      { id: '3', name: 'PS5 Unit 3', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, player_rates: ps5Rates, sort_order: 3 },
+      { id: '4', name: 'Sim Racing',  type: 'ps5_simracing', hourly_rate: 300, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 6 },
+      { id: '5', name: 'Snooker 1',  type: 'snooker', hourly_rate: 150, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 7 },
+      { id: '6', name: 'Snooker 2',  type: 'snooker', hourly_rate: 150, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 8 },
     ];
     for (const station of initialStations) {
       db.prepare('INSERT INTO stations (id, data) VALUES (?, ?)').run(station.id, JSON.stringify(station));
