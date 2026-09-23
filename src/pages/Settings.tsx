@@ -70,17 +70,20 @@ export function Settings() {
 
     if ((window as any).api?.updater) {
       updater.onUpdateNotAvailable(() => {
+        toast.dismiss();
         toast.success('Sara Gaming Zone is up to date!');
         setCheckingUpdate(false);
       });
       updater.onUpdateAvailable((info: any) => {
-        toast.info(`Update v${info?.version} is available and downloading!`);
+        toast.dismiss();
+        toast.info(`Update v${info?.version} is available and downloading!`, { duration: 8000 });
         setCheckingUpdate(false);
       });
       updater.onUpdateError((err: any) => {
+        toast.dismiss();
         const msg = err?.message || '';
         if (msg.includes('404') || msg.includes('releases.atom')) {
-          toast.success('Sara Gaming Zone is up to date! (No newer release found)');
+          toast.success('Sara Gaming Zone is up to date!');
         } else {
           toast.error(`Update check: ${msg || 'Could not check updates'}`);
         }
@@ -90,6 +93,9 @@ export function Settings() {
 
     return () => {
       if (waIntervalRef.current) clearInterval(waIntervalRef.current);
+      if ((window as any).api?.updater) {
+        updater.removeListeners();
+      }
     };
   }, []);
 
@@ -453,17 +459,20 @@ export function Settings() {
                 className="border-white/10 bg-white/5 hover:bg-white/10 gap-2"
                 onClick={async () => {
                   setCheckingUpdate(true);
+                  toast.dismiss();
                   toast.info('Checking for updates...');
                   try {
                     if ((window as any).api?.updater) {
                       const res = await updater.checkForUpdates();
                       if (res?.status === 'dev_mode') {
+                        toast.dismiss();
                         toast.info(res.message);
                         setCheckingUpdate(false);
                       } else if (res?.status === 'error') {
+                        toast.dismiss();
                         const errMsg = res.message || '';
                         if (errMsg.includes('404') || errMsg.includes('Cannot find') || errMsg.includes('releases.atom')) {
-                          toast.success('No new release published yet. Your application is up to date!');
+                          toast.success('Sara Gaming Zone is up to date!');
                         } else {
                           toast.error(`Update check: ${errMsg}`);
                         }
@@ -472,14 +481,16 @@ export function Settings() {
                       // If res?.status === 'ok', registered event listeners handle available / not available / error
                     } else {
                       setTimeout(() => {
+                        toast.dismiss();
                         toast.info('Automatic update check is active in packaged desktop builds.');
                         setCheckingUpdate(false);
                       }, 1000);
                     }
                   } catch (e: any) {
+                    toast.dismiss();
                     const errMsg = e?.message || '';
                     if (errMsg.includes('404') || errMsg.includes('Cannot find') || errMsg.includes('releases.atom')) {
-                      toast.success('No new release published yet. Your application is up to date!');
+                      toast.success('Sara Gaming Zone is up to date!');
                     } else {
                       toast.error(errMsg || 'Failed to check for updates');
                     }

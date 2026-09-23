@@ -49,18 +49,37 @@ export function Dashboard() {
   };
 
   const moveStation = async (station: Station, direction: 'left' | 'right') => {
-    const sorted = [...stations].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    // Sort all current stations by sort_order ascending
+    const sorted = [...stations].sort((a, b) => {
+      const orderA = a.sort_order ?? 0;
+      const orderB = b.sort_order ?? 0;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.name.localeCompare(b.name);
+    });
+
     const idx = sorted.findIndex(s => s.id === station.id);
     if (idx === -1) return;
     const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
     if (targetIdx < 0 || targetIdx >= sorted.length) return;
 
-    const currentOrder = sorted[idx].sort_order ?? idx;
-    const targetOrder = sorted[targetIdx].sort_order ?? targetIdx;
+    // Swap elements in sorted array
+    const temp = sorted[idx];
+    sorted[idx] = sorted[targetIdx];
+    sorted[targetIdx] = temp;
 
-    await db.stations.update(sorted[idx].id, { sort_order: targetOrder });
-    await db.stations.update(sorted[targetIdx].id, { sort_order: currentOrder });
-    loadData();
+    // Reassign clear sequential sort_order (10, 20, 30...) to avoid ties
+    const updatedStations = sorted.map((st, index) => ({
+      ...st,
+      sort_order: (index + 1) * 10
+    }));
+
+    // Update local state immediately for instant feedback
+    setStations(updatedStations);
+
+    // Persist all updated sort_orders to database
+    await Promise.all(
+      updatedStations.map(st => db.stations.update(st.id, { sort_order: st.sort_order }))
+    );
   };
 
   // Format current date and time
@@ -151,22 +170,84 @@ export function Dashboard() {
       {loading ? (
         <div className="text-muted-foreground">Loading stations...</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {[...filteredStations].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(station => (
-            <StationCard 
-              key={station.id} 
-              station={station} 
-              rules={rules}
-              allGames={games}
-              now={currentTime.getTime()}
-              onMove={(dir) => moveStation(station, dir)}
-              onStartClick={() => setStartModalStation(station)} 
-              onTransferClick={(session) => setTransferModalData({station, session})}
-              onStopClick={(session) => setStopModalSession({station, session})}
-              onAddFoodClick={(session) => setFoodModalSession(session)}
-            />
-          ))}
-        </div>
+        (() => {
+          const sortedStations = [...filteredStations].sort((a, b) => {
+            const orderA = a.sort_order ?? 0;
+            const orderB = b.sort_order ?? 0;
+            if (orderA !== orderB) return orderA - orderB;
+            return a.name.localeCompare(b.name);
+          });
+
+          const getCategoryMeta = (type: string) => {
+            if (type.startsWith('ps5_sim')) return { label: '🏎️ SIM RACING ZONE', color: 'border-amber-500/30 text-amber-400' };
+            if (type.startsWith('ps5_vr')) return { label: '🥽 VR GAMING ARENA', color: 'border-purple-500/30 text-purple-400' };
+            if (type.startsWith('ps5')) return { label: '🎮 PLAYSTATION / PS5', color: 'border-indigo-500/30 text-indigo-400' };
+            if (type === 'snooker' || type === 'pool') return { label: '🎱 POOL & SNOOKER TABLES', color: 'border-emerald-500/30 text-emerald-400' };
+            if (type === 'pc') return { label: '💻 PC GAMING RIGS', color: 'border-cyan-500/30 text-cyan-400' };
+            return { label: '🎲 OTHER GAMING STATIONS', color: 'border-white/20 text-muted-foreground' };
+          };
+
+          const catKeys = Array.from(new Set(sortedStations.map(s => {
+            if (s.type.startsWith('ps5_sim')) return 'sim';
+            if (s.type.startsWith('ps5_vr')) return 'vr';
+            if (s.type.startsWith('ps5')) return 'ps5';
+            if (s.type === 'snooker' || s.type === 'pool') return 'pool';
+            if (s.type === 'pc') return 'pc';
+            return 'other';
+          })));
+
+          if (sortedStations.length === 0) {
+            return <div className="text-center py-12 text-muted-foreground">No stations found matching your search.</div>;
+          }
+
+          return (
+            <div className="space-y-8">
+              {catKeys.map(catKey => {
+                const catStations = sortedStations.filter(s => {
+                  if (catKey === 'sim') return s.type.startsWith('ps5_sim');
+                  if (catKey === 'vr') return s.type.startsWith('ps5_vr');
+                  if (catKey === 'ps5') return s.type.startsWith('ps5') && !s.type.includes('sim') && !s.type.includes('vr');
+                  if (catKey === 'pool') return s.type === 'snooker' || s.type === 'pool';
+                  if (catKey === 'pc') return s.type === 'pc';
+                  return !s.type.startsWith('ps5') && s.type !== 'snooker' && s.type !== 'pool' && s.type !== 'pc';
+                });
+
+                if (catStations.length === 0) return null;
+                const meta = getCategoryMeta(catStations[0].type);
+
+                return (
+                  <div key={catKey} className="space-y-4">
+                    <div className={`flex items-center justify-between pb-2 border-b border-white/10 ${meta.color}`}>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-sm font-bold tracking-wider uppercase">{meta.label}</h2>
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-muted-foreground font-mono font-semibold">
+                          {catStations.length} {catStations.length === 1 ? 'Station' : 'Stations'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {catStations.map(station => (
+                        <StationCard 
+                          key={station.id} 
+                          station={station} 
+                          rules={rules}
+                          allGames={games}
+                          now={currentTime.getTime()}
+                          onMove={(dir) => moveStation(station, dir)}
+                          onStartClick={() => setStartModalStation(station)} 
+                          onTransferClick={(session) => setTransferModalData({station, session})}
+                          onStopClick={(session) => setStopModalSession({station, session})}
+                          onAddFoodClick={(session) => setFoodModalSession(session)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()
       )}
 
       <StartSessionModal 
