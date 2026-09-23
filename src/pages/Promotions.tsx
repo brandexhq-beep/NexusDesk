@@ -38,7 +38,39 @@ export function Promotions() {
   }, []);
 
   const loadData = async () => {
-    const t = await db.templates.getAll();
+    let t = await db.templates.getAll();
+
+    // Auto-seed pre-created promotion templates if none exist
+    if (!t || t.length === 0) {
+      const defaultTemplates = [
+        {
+          name: '🔥 Happy Hour Discount (50% OFF)',
+          content: 'Hey Gamer! 🎮 Happy Hour special is live at Sara Gaming Zone! Get 50% OFF on all PS5 & PC gaming sessions today between 12 PM - 4 PM. Book your slot now or walk in!'
+        },
+        {
+          name: '🎟️ Weekend Unlimited Pass',
+          content: 'Weekend Gaming Rush! 🚀 Play 3 Hours & get 1 Hour FREE on all PS5 & Sim Racing setups this Saturday & Sunday. Grab your friends and challenge them!'
+        },
+        {
+          name: '🎂 Gamer Birthday Special',
+          content: 'Happy Birthday Gamer! 🎉 Celebrate your special day at Sara Gaming Zone — Enjoy 1 HOUR FREE gaming on us! Show your ID at the counter to claim.'
+        },
+        {
+          name: '🎮 New Game Release Alert',
+          content: 'NEW GAME ALERT! 🏆 GTA 6 / FC 25 / Black Myth Wukong is now installed and live on all PS5 & PC Rigs at Sara Gaming Zone. Come test your skills today!'
+        },
+        {
+          name: '⭐ VIP Loyalty Bonus',
+          content: 'Thank you for being a loyal gamer! 🌟 Top up your gaming wallet with ₹500 today and get ₹100 BONUS credit instantly. Offer valid for 48 hours!'
+        }
+      ];
+
+      for (const tmpl of defaultTemplates) {
+        await db.templates.add(tmpl);
+      }
+      t = await db.templates.getAll();
+    }
+
     const c = await db.customers.getAll();
     setTemplates(t);
     setCustomers(c);

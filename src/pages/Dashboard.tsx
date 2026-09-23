@@ -26,6 +26,7 @@ export function Dashboard() {
   
   const [stationSearch, setStationSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'occupied' | 'free'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'ps5' | 'sim' | 'pool' | 'pc' | 'vr'>('all');
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -101,6 +102,13 @@ export function Dashboard() {
   const filteredStations = stations.filter(st => {
     if (statusFilter === 'occupied' && st.status !== 'occupied') return false;
     if (statusFilter === 'free' && st.status !== 'free') return false;
+
+    if (categoryFilter === 'sim' && !st.type.startsWith('ps5_sim')) return false;
+    if (categoryFilter === 'vr' && !st.type.startsWith('ps5_vr')) return false;
+    if (categoryFilter === 'ps5' && (!st.type.startsWith('ps5') || st.type.includes('sim') || st.type.includes('vr'))) return false;
+    if (categoryFilter === 'pool' && st.type !== 'snooker' && st.type !== 'pool') return false;
+    if (categoryFilter === 'pc' && st.type !== 'pc') return false;
+
     if (stationSearch.trim()) {
       const q = stationSearch.toLowerCase();
       return st.name.toLowerCase().includes(q) || st.type.toLowerCase().includes(q);
@@ -126,9 +134,9 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Station Quick Filter & Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-black/40 border border-white/10 rounded-xl">
-        <div className="flex items-center gap-1.5 bg-black/40 border border-white/10 p-1 rounded-lg">
+      {/* Station Quick Filter, Category Tabs & Search Bar */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 bg-black/40 border border-white/10 rounded-xl">
+        <div className="flex flex-wrap items-center gap-1.5 bg-black/40 border border-white/10 p-1 rounded-lg">
           <button
             onClick={() => setStatusFilter('all')}
             className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
@@ -152,6 +160,58 @@ export function Dashboard() {
             }`}
           >
             Free ({freeCount})
+          </button>
+
+          <div className="h-4 w-px bg-white/10 mx-1 hidden sm:block" />
+
+          {/* Category Filter Tabs */}
+          <button
+            onClick={() => setCategoryFilter('all')}
+            className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all ${
+              categoryFilter === 'all' ? 'bg-white/10 text-white font-bold' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            All Zones
+          </button>
+          <button
+            onClick={() => setCategoryFilter('ps5')}
+            className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all ${
+              categoryFilter === 'ps5' ? 'bg-indigo-500/20 text-indigo-400 font-bold border border-indigo-500/30' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            🎮 PS5
+          </button>
+          <button
+            onClick={() => setCategoryFilter('sim')}
+            className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all ${
+              categoryFilter === 'sim' ? 'bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            🏎️ Sim
+          </button>
+          <button
+            onClick={() => setCategoryFilter('pool')}
+            className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all ${
+              categoryFilter === 'pool' ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            🎱 Pool
+          </button>
+          <button
+            onClick={() => setCategoryFilter('pc')}
+            className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all ${
+              categoryFilter === 'pc' ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/30' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            💻 PC
+          </button>
+          <button
+            onClick={() => setCategoryFilter('vr')}
+            className={`px-2.5 py-1 text-xs rounded-md font-medium transition-all ${
+              categoryFilter === 'vr' ? 'bg-purple-500/20 text-purple-400 font-bold border border-purple-500/30' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            🥽 VR
           </button>
         </div>
 

@@ -10,6 +10,7 @@ export function UpdateBanner() {
   const [info, setInfo] = useState<any>(null);
   const [progress, setProgress] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
 
   useEffect(() => {
     // Only available in Electron context
@@ -77,12 +78,21 @@ export function UpdateBanner() {
 
       {state === 'ready' && (
         <Button
-          onClick={() => updater.installUpdate()}
+          disabled={isInstalling}
+          onClick={async () => {
+            setIsInstalling(true);
+            try {
+              await updater.installUpdate();
+            } catch (e) {
+              console.error('Failed to trigger update restart', e);
+              setIsInstalling(false);
+            }
+          }}
           className="w-full bg-indigo-600 hover:bg-indigo-500 text-white gap-2 mt-1"
           size="sm"
         >
-          <RefreshCw className="w-4 h-4" />
-          Restart &amp; Install Now
+          <RefreshCw className={`w-4 h-4 ${isInstalling ? 'animate-spin' : ''}`} />
+          {isInstalling ? 'Restarting Application...' : 'Restart & Install Now'}
         </Button>
       )}
 
