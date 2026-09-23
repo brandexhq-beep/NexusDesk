@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
 import type { Customer, Session, Station } from '../types';
 import { SessionDetailsModal } from './SessionDetailsModal';
+import { isValidIndianPhone, formatIndianPhone } from '../lib/utils';
+import { toast } from 'sonner';
 
 interface CustomerProfileModalProps {
   customer: Customer | null;
@@ -17,9 +20,15 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
 
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+  const [editPhone, setEditPhone] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+
   useEffect(() => {
     if (customer) {
       setLoading(true);
+      setEditPhone(customer.phone ? customer.phone.replace('+91 ', '') : '');
+      setIsEditingPhone(false);
       Promise.all([
         db.sessions.getAll(),
         db.stations.getAll(),
@@ -41,6 +50,27 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
 
   if (!customer) return null;
 
+  const handleSavePhone = async () => {
+    if (editPhone.trim() && !isValidIndianPhone(editPhone)) {
+      toast.error('Invalid phone number! Must be a 10-digit Indian mobile number starting with 6-9');
+      return;
+    }
+
+    setSavingPhone(true);
+    try {
+      const formatted = editPhone.trim() ? formatIndianPhone(editPhone) : '';
+      await db.customers.update(customer.id, { phone: formatted });
+      customer.phone = formatted;
+      setIsEditingPhone(false);
+      toast.success('Phone number updated!');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to update phone number');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
   const totalSpend = sessions.reduce((acc, curr) => acc + (curr.total_amount || 0), 0);
   const lastVisit = sessions.length > 0 ? new Date(sessions[0].start_time).toLocaleDateString() : 'Never';
 
@@ -58,7 +88,41 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
       <DialogContent className="bg-card text-card-foreground border-border max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-2xl">{customer.name}'s Profile</DialogTitle>
-          <p className="text-muted-foreground">{customer.phone || 'No phone number'}</p>
+          {isEditingPhone ? (
+            <div className="flex items-center gap-2 mt-2">
+              <div className="relative flex items-center flex-1">
+                <span className="absolute left-3 text-muted-foreground text-xs">+91</span>
+                <Input
+                  value={editPhone}
+                  maxLength={10}
+                  onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, ''))}
+                  className="pl-9 h-8 text-xs bg-background/50 border-white/10"
+                  placeholder="9876543210"
+                />
+              </div>
+              <Button size="sm" onClick={handleSavePhone} disabled={savingPhone} className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700">
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setIsEditingPhone(false)} className="h-8 text-xs">
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-sm text-muted-foreground">{customer.phone || 'No phone number'}</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditPhone(customer.phone ? customer.phone.replace('+91 ', '') : '');
+                  setIsEditingPhone(true);
+                }}
+                className="h-6 px-2 text-[10px] text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10"
+              >
+                ✏️ Edit Phone
+              </Button>
+            </div>
+          )}
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-4 my-4">

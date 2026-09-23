@@ -8,6 +8,8 @@ import { db } from '../services/db';
 import type { Station, Customer, MenuItem, Game } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
 import { fuzzySearch } from '../lib/search';
+import { isValidIndianPhone, formatIndianPhone } from '../lib/utils';
+import { toast } from 'sonner';
 
 interface StartSessionModalProps {
   station: Station | null;
@@ -150,13 +152,21 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
 
   const handleQuickAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustName.trim()) return;
+    if (!newCustName.trim()) {
+      toast.error('Please enter customer full name');
+      return;
+    }
+    if (newCustPhone.trim() && !isValidIndianPhone(newCustPhone)) {
+      toast.error('Invalid phone number! Must be a 10-digit Indian mobile number starting with 6-9');
+      return;
+    }
 
     setAddingCustomerLoading(true);
     try {
+      const formattedPhone = newCustPhone.trim() ? formatIndianPhone(newCustPhone) : '';
       const newCust = await db.customers.add({
         name: newCustName.trim(),
-        phone: newCustPhone.trim(),
+        phone: formattedPhone,
         wallet_balance: 0,
         available_minutes: 0,
         loyalty_points: 0
@@ -168,8 +178,10 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
       setIsCreatingCustomer(false);
       setNewCustName('');
       setNewCustPhone('');
+      toast.success('Customer created & selected!');
     } catch (err) {
       console.error('Failed to quick add customer:', err);
+      toast.error('Failed to add customer');
     } finally {
       setAddingCustomerLoading(false);
     }

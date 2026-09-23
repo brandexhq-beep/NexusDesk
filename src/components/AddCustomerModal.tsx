@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
+import { isValidIndianPhone, formatIndianPhone } from '../lib/utils';
+import { toast } from 'sonner';
 
 interface AddCustomerModalProps {
   open: boolean;
@@ -17,22 +19,32 @@ export function AddCustomerModal({ open, onClose, onAdd }: AddCustomerModalProps
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
-    if (!name.trim() || !phone.trim()) return;
+    if (!name.trim()) {
+      toast.error('Please enter customer full name');
+      return;
+    }
+    if (!isValidIndianPhone(phone)) {
+      toast.error('Invalid phone number! Must be a 10-digit Indian mobile number starting with 6-9');
+      return;
+    }
+
     setLoading(true);
     try {
       await db.customers.add({
-        name,
-        phone: `+91 ${phone}`,
+        name: name.trim(),
+        phone: formatIndianPhone(phone),
         wallet_balance: 0,
         available_minutes: 0,
         loyalty_points: 0,
       });
       setName('');
       setPhone('');
+      toast.success('Customer added successfully!');
       onAdd();
       onClose();
     } catch (e) {
       console.error(e);
+      toast.error('Failed to add customer');
     } finally {
       setLoading(false);
     }
