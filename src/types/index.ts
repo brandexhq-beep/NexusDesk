@@ -151,6 +151,9 @@ export interface AppSettings {
   session_reminder_mins_2?: number;
   session_reminder_end_enabled?: boolean;
   wa_queue_cooldown_sec?: number;
+  wa_template_warning_1?: string;
+  wa_template_warning_2?: string;
+  wa_template_end?: string;
 }
 
 export interface PricingRule {

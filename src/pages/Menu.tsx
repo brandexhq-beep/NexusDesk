@@ -105,17 +105,34 @@ export function Menu() {
                   <TableCell className="text-right text-muted-foreground">{currency} {item.price}</TableCell>
                   <TableCell>
                     {(item.category === 'snack' || item.category === 'drink') ? (
-                      <Input
-                        type="number"
-                        min="0"
-                        className="w-20 h-8 border-border bg-background"
-                        defaultValue={item.stock_quantity || 0}
-                        onBlur={(e) => {
-                          if (parseInt(e.target.value) !== (item.stock_quantity || 0)) {
-                            handleUpdateStock(item.id, e.target.value);
-                          }
-                        }}
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          min="0"
+                          className="w-20 h-8 border-border bg-background font-mono text-xs"
+                          defaultValue={item.stock_quantity || 0}
+                          key={`${item.id}_${item.stock_quantity}`}
+                          onBlur={(e) => {
+                            if (parseInt(e.target.value) !== (item.stock_quantity || 0)) {
+                              handleUpdateStock(item.id, e.target.value);
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={() => handleUpdateStock(item.id, ((item.stock_quantity || 0) + 10).toString())}
+                          className="px-2 py-1 text-[10px] font-bold rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 hover:bg-indigo-500/20"
+                          title="Add 10 units"
+                        >
+                          +10
+                        </button>
+                        <button
+                          onClick={() => handleUpdateStock(item.id, ((item.stock_quantity || 0) + 50).toString())}
+                          className="px-2 py-1 text-[10px] font-bold rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20"
+                          title="Add 50 units"
+                        >
+                          +50
+                        </button>
+                      </div>
                     ) : (
                       <span className="text-muted-foreground text-sm">-</span>
                     )}

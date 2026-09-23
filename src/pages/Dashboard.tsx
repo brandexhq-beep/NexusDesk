@@ -10,6 +10,8 @@ import { StartSessionModal } from '../components/StartSessionModal';
 import { StopSessionModal } from '../components/StopSessionModal';
 import { AddFoodModal } from '../components/AddFoodModal';
 import { PricingChartModal } from '../components/PricingChartModal';
+import { TransferSessionModal } from '../components/TransferSessionModal';
+import { ArrowRightLeft } from 'lucide-react';
 
 export function Dashboard() {
   const [stations, setStations] = useState<Station[]>([]);
@@ -19,6 +21,7 @@ export function Dashboard() {
   const [startModalStation, setStartModalStation] = useState<Station | null>(null);
   const [stopModalSession, setStopModalSession] = useState<{station: Station, session: Session} | null>(null);
   const [foodModalSession, setFoodModalSession] = useState<Session | null>(null);
+  const [transferModalData, setTransferModalData] = useState<{station: Station, session: Session} | null>(null);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   
   const [stationSearch, setStationSearch] = useState('');
@@ -43,6 +46,21 @@ export function Dashboard() {
     setRules(rulesData);
     setGames(gamesData);
     setLoading(false);
+  };
+
+  const moveStation = async (station: Station, direction: 'left' | 'right') => {
+    const sorted = [...stations].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const idx = sorted.findIndex(s => s.id === station.id);
+    if (idx === -1) return;
+    const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= sorted.length) return;
+
+    const currentOrder = sorted[idx].sort_order ?? idx;
+    const targetOrder = sorted[targetIdx].sort_order ?? targetIdx;
+
+    await db.stations.update(sorted[idx].id, { sort_order: targetOrder });
+    await db.stations.update(sorted[targetIdx].id, { sort_order: currentOrder });
+    loadData();
   };
 
   // Format current date and time
@@ -141,7 +159,9 @@ export function Dashboard() {
               rules={rules}
               allGames={games}
               now={currentTime.getTime()}
+              onMove={(dir) => moveStation(station, dir)}
               onStartClick={() => setStartModalStation(station)} 
+              onTransferClick={(session) => setTransferModalData({station, session})}
               onStopClick={(session) => setStopModalSession({station, session})}
               onAddFoodClick={(session) => setFoodModalSession(session)}
             />
@@ -169,6 +189,14 @@ export function Dashboard() {
         onAdd={loadData}
       />
 
+      <TransferSessionModal
+        session={transferModalData?.session || null}
+        currentStation={transferModalData?.station || null}
+        allStations={stations}
+        onClose={() => setTransferModalData(null)}
+        onSuccess={loadData}
+      />
+
       <PricingChartModal
         open={isPricingModalOpen}
         onClose={() => setIsPricingModalOpen(false)}
@@ -182,7 +210,9 @@ function StationCard({
   rules, 
   allGames, 
   now, 
+  onMove,
   onStartClick, 
+  onTransferClick,
   onStopClick, 
   onAddFoodClick 
 }: { 
@@ -190,7 +220,9 @@ function StationCard({
   rules: PricingRule[], 
   allGames: Game[], 
   now: number, 
+  onMove: (dir: 'left' | 'right') => void,
   onStartClick: () => void, 
+  onTransferClick: (session: Session) => void,
   onStopClick: (session: Session) => void, 
   onAddFoodClick: (session: Session) => void 
 }) {
@@ -311,6 +343,22 @@ function StationCard({
               {!isOccupied && isHappyHour && <span className="ml-2 px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-500 uppercase font-bold tracking-wider animate-pulse">Happy Hour</span>}
             </CardTitle>
             <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0.5 bg-black/40 border border-white/10 rounded px-1 py-0.5 mr-1">
+                <button 
+                  onClick={() => onMove('left')} 
+                  className="text-xs text-muted-foreground hover:text-white px-1 hover:bg-white/10 rounded" 
+                  title="Move Left"
+                >
+                  ⬅️
+                </button>
+                <button 
+                  onClick={() => onMove('right')} 
+                  className="text-xs text-muted-foreground hover:text-white px-1 hover:bg-white/10 rounded" 
+                  title="Move Right"
+                >
+                  ➡️
+                </button>
+              </div>
               {isOccupied && activeSession?.reminders_sent && activeSession.reminders_sent.length > 0 && (
                 <div className="flex gap-1">
                   {activeSession.reminders_sent.map(r => (
@@ -431,25 +479,26 @@ function StationCard({
             </Button>
           ) : (
             <div className="w-full space-y-2">
-              {(activeSession?.combo_id || activeSession?.prepaid_duration_mins) ? (
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8" onClick={() => handleExtend(30)}>
-                    +30 Min
-                  </Button>
-                  <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8" onClick={() => handleExtend(60)}>
-                    +1 Hr
-                  </Button>
-                </div>
-              ) : null}
               <div className="flex gap-2">
-                <Button variant="outline" title="Manual Reminder" className="px-3 border-white/10 hover:bg-white/5 text-blue-400" onClick={handleManualReminder}>
-                  <Bell className="w-4 h-4" />
+                <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8 text-indigo-300" onClick={() => handleExtend(30)}>
+                  +30 Min
                 </Button>
-                <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5" onClick={() => activeSession && onAddFoodClick(activeSession)}>
-                  <Plus className="w-4 h-4 mr-2" /> Item
+                <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs h-8 text-indigo-300" onClick={() => handleExtend(60)}>
+                  +1 Hr
                 </Button>
-                <Button variant="destructive" className="flex-1 bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/20" onClick={() => activeSession && onStopClick(activeSession)}>
-                  <Square className="w-4 h-4 mr-2" /> Stop
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" title="Manual Reminder" className="px-2.5 border-white/10 hover:bg-white/5 text-blue-400" onClick={handleManualReminder}>
+                  <Bell className="w-3.5 h-3.5" />
+                </Button>
+                <Button variant="outline" title="Transfer Station / Players" className="px-2.5 border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300" onClick={() => activeSession && onTransferClick(activeSession)}>
+                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                </Button>
+                <Button variant="outline" className="flex-1 border-white/10 hover:bg-white/5 text-xs px-2" onClick={() => activeSession && onAddFoodClick(activeSession)}>
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Item
+                </Button>
+                <Button variant="destructive" className="flex-1 bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/20 text-xs px-2" onClick={() => activeSession && onStopClick(activeSession)}>
+                  <Square className="w-3.5 h-3.5 mr-1" /> Stop
                 </Button>
               </div>
             </div>

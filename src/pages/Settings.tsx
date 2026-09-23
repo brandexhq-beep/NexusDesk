@@ -48,7 +48,10 @@ export function Settings() {
     session_reminder_mins_1: '15',
     session_reminder_mins_2: '5',
     session_reminder_end_enabled: true,
-    wa_queue_cooldown_sec: '5'
+    wa_queue_cooldown_sec: '5',
+    wa_template_warning_1: 'Hi {name}! Your session on {station} has {time} mins remaining.',
+    wa_template_warning_2: 'Final Warning! Your session on {station} will end in {time} mins.',
+    wa_template_end: 'Time is up for your session on {station}. Please proceed to checkout.'
   });
   const [loading, setLoading] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -118,7 +121,10 @@ export function Settings() {
       session_reminder_mins_1: (data.session_reminder_mins_1 ?? 15).toString(),
       session_reminder_mins_2: (data.session_reminder_mins_2 ?? 5).toString(),
       session_reminder_end_enabled: data.session_reminder_end_enabled !== false,
-      wa_queue_cooldown_sec: (data.wa_queue_cooldown_sec ?? 5).toString()
+      wa_queue_cooldown_sec: (data.wa_queue_cooldown_sec ?? 5).toString(),
+      wa_template_warning_1: data.wa_template_warning_1 || 'Hi {name}! Your session on {station} has {time} mins remaining.',
+      wa_template_warning_2: data.wa_template_warning_2 || 'Final Warning! Your session on {station} will end in {time} mins.',
+      wa_template_end: data.wa_template_end || 'Time is up for your session on {station}. Please proceed to checkout.'
     });
   };
 
@@ -203,7 +209,10 @@ export function Settings() {
         session_reminder_mins_1: Number(formData.session_reminder_mins_1),
         session_reminder_mins_2: Number(formData.session_reminder_mins_2),
         session_reminder_end_enabled: formData.session_reminder_end_enabled,
-        wa_queue_cooldown_sec: Number(formData.wa_queue_cooldown_sec)
+        wa_queue_cooldown_sec: Number(formData.wa_queue_cooldown_sec),
+        wa_template_warning_1: formData.wa_template_warning_1,
+        wa_template_warning_2: formData.wa_template_warning_2,
+        wa_template_end: formData.wa_template_end
       });
       await loadSettings();
       toast.success('Settings saved successfully!');
@@ -906,6 +915,44 @@ export function Settings() {
                     className="border-white/10 bg-background/50"
                   />
                   <p className="text-[10px] text-muted-foreground">Spacing delay between sending queued WhatsApp messages to ensure account safety.</p>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-white/5 space-y-4">
+                <div>
+                  <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <MessageCircle className="w-4 h-4 text-indigo-400" /> Custom WhatsApp Message Templates
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">Customize automatic reminder texts. Supported placeholders: <code className="text-indigo-300 font-mono">{'{name}'}</code>, <code className="text-indigo-300 font-mono">{'{station}'}</code>, <code className="text-indigo-300 font-mono">{'{time}'}</code></p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Primary Warning Template (e.g. 15 Mins Left)</Label>
+                    <Input
+                      value={formData.wa_template_warning_1}
+                      onChange={(e) => setFormData({...formData, wa_template_warning_1: e.target.value})}
+                      className="border-white/10 bg-background/50 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Final Warning Template (e.g. 5 Mins Left)</Label>
+                    <Input
+                      value={formData.wa_template_warning_2}
+                      onChange={(e) => setFormData({...formData, wa_template_warning_2: e.target.value})}
+                      className="border-white/10 bg-background/50 text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Time Is Up Template</Label>
+                    <Input
+                      value={formData.wa_template_end}
+                      onChange={(e) => setFormData({...formData, wa_template_end: e.target.value})}
+                      className="border-white/10 bg-background/50 text-xs font-mono"
+                    />
+                  </div>
                 </div>
               </div>
             </CardContent>

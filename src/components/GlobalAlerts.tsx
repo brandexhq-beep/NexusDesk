@@ -53,15 +53,34 @@ export function GlobalAlerts() {
 
         const station = stations.find(st => st.id === session.station_id);
         const stName = station ? station.name : 'your station';
+        let customerName = 'Gamer';
+        if (session.customer_id) {
+          try {
+            const cust = await db.customers.getById(session.customer_id);
+            if (cust?.name) customerName = cust.name;
+          } catch (_) {}
+        }
+
+        const formatMsg = (template: string | undefined, defaultMsg: string, mins: number) => {
+          if (!template) return defaultMsg;
+          return template
+            .replace(/\{name\}/g, customerName)
+            .replace(/\{station\}/g, stName)
+            .replace(/\{time\}/g, mins.toString());
+        };
 
         // Primary Warning Reminder (e.g. 15m)
         if (r1 > 0) {
-          await checkAndSend(r1, `${r1}m`, `Hi! Your session at ${stName} has ${r1} minutes left. You can extend at the counter!`);
+          const defaultText = `Hi ${customerName}! Your session at ${stName} has ${r1} minutes left. You can extend at the counter!`;
+          const msg = formatMsg(settings.wa_template_warning_1, defaultText, r1);
+          await checkAndSend(r1, `${r1}m`, msg);
         }
         
         // Secondary Warning Reminder (e.g. 5m)
         if (r2 > 0 && r2 < r1) {
-          await checkAndSend(r2, `${r2}m`, `Hi! Your session at ${stName} has only ${r2} minutes left.`);
+          const defaultText = `Final Warning! Your session at ${stName} has only ${r2} minutes left.`;
+          const msg = formatMsg(settings.wa_template_warning_2, defaultText, r2);
+          await checkAndSend(r2, `${r2}m`, msg);
         }
 
         // Time is up
@@ -70,7 +89,9 @@ export function GlobalAlerts() {
             newAlerts.push({ id: session.id, stationName: station.name });
           }
           if (rEnd) {
-            await checkAndSend(0, '0m', `Your session at ${stName} is now over. Thank you for playing!`);
+            const defaultText = `Time is up for your session at ${stName}. Thank you for playing!`;
+            const msg = formatMsg(settings.wa_template_end, defaultText, 0);
+            await checkAndSend(0, '0m', msg);
           }
         }
 
