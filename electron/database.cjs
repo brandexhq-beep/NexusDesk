@@ -386,6 +386,10 @@ function initDatabase() {
         runSaraGamingSeed();
       }
     }
+  } catch (err) {
+    console.error('[Seed] Failed to run Sara Gaming Zone seed:', err.message);
+  }
+
   // Run startup reconciliation: align station status with active sessions
   try {
     const allStations = jsonStore.getAll('stations');
