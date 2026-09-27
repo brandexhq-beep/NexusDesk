@@ -262,3 +262,56 @@ export function WhatsAppStatus() {
     </div>
   );
 }
+
+export function HeaderWhatsAppBadge() {
+  const [status, setStatus] = useState<WaStatus | null>(null);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await whatsapp.getStatus();
+        if (res) setStatus(res);
+      } catch (_) {}
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!status) return null;
+
+  if (status.ready) {
+    return (
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        <span>WhatsApp Ready</span>
+      </div>
+    );
+  }
+
+  if (status.state === 'qr') {
+    return (
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 font-medium">
+        <span className="w-2 h-2 rounded-full bg-yellow-400" />
+        <span>Scan WA QR Code</span>
+      </div>
+    );
+  }
+
+  if (status.state === 'disconnected' || status.state === 'error' || status.state === 'auth_failure') {
+    return (
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-red-500/10 text-red-400 border border-red-500/20 font-medium">
+        <span className="w-2 h-2 rounded-full bg-red-400" />
+        <span>WhatsApp Offline</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-medium">
+      <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
+      <span>Connecting WA…</span>
+    </div>
+  );
+}
+

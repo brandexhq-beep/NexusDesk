@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Gamepad2, Users, Monitor, LogOut, Coffee, Menu as MenuIcon, Settings as Cog, Disc, Megaphone, BarChart3, Receipt } from 'lucide-react';
 import { GlobalAlerts } from './GlobalAlerts';
 import { ReviewQueue } from './ReviewQueue';
-import { WhatsAppStatus } from './WhatsAppStatus';
+import { WhatsAppStatus, HeaderWhatsAppBadge } from './WhatsAppStatus';
 import { UpdateBanner } from './UpdateBanner';
 import { db } from '../services/db';
 import { useAuth } from './AuthProvider';
@@ -166,16 +166,19 @@ export function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative z-10 w-full">
-        <header className="h-16 border-b border-white/5 flex items-center px-4 md:px-8 bg-black/40 backdrop-blur-md">
-          <button 
-            className="md:hidden mr-4 p-2 text-muted-foreground hover:text-foreground" 
-            onClick={() => setIsMobileMenuOpen(true)}
-          >
-            <MenuIcon className="w-6 h-6" />
-          </button>
-          <h2 className="text-xl font-semibold capitalize text-foreground/90 tracking-tight truncate">
-            {navItems.find(i => i.path === location.pathname)?.name || 'Cafe Management'}
-          </h2>
+        <header className="h-16 border-b border-white/5 flex items-center justify-between px-4 md:px-8 bg-black/40 backdrop-blur-md">
+          <div className="flex items-center">
+            <button 
+              className="md:hidden mr-4 p-2 text-muted-foreground hover:text-foreground" 
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+              <MenuIcon className="w-6 h-6" />
+            </button>
+            <h2 className="text-xl font-semibold capitalize text-foreground/90 tracking-tight truncate">
+              {navItems.find(i => i.path === location.pathname)?.name || 'Cafe Management'}
+            </h2>
+          </div>
+          <HeaderWhatsAppBadge />
         </header>
         
         <div className="flex-1 overflow-auto p-4 md:p-8">

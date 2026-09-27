@@ -161,6 +161,18 @@ export function Settings() {
     }
   };
 
+  const handleClearFailedQueue = async () => {
+    const failedItems = waQueue.filter(item => item.status === 'failed');
+    if (failedItems.length === 0) return;
+    if (!window.confirm(`Clear ${failedItems.length} failed message(s) from the queue?`)) return;
+    try {
+      await Promise.all(failedItems.map(item => db.whatsappQueue.delete(item.id)));
+      setWaQueue(prev => prev.filter(item => item.status !== 'failed'));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleClearQueue = async () => {
     if (!window.confirm('Are you sure you want to clear the entire WhatsApp queue? This will drop all pending messages.')) return;
     try {
@@ -1002,14 +1014,21 @@ export function Settings() {
           </Card>
 
           <Card className="bg-black/40 backdrop-blur-md border-white/10">
-            <CardHeader className="flex flex-row items-center justify-between pb-4">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4">
               <div>
                 <CardTitle className="text-card-foreground">WhatsApp Outbound Queue</CardTitle>
                 <CardDescription>Monitor and manage pending messages. Failing messages drop automatically after 3 retries.</CardDescription>
               </div>
-              <Button onClick={handleClearQueue} variant="destructive" size="sm" className="bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/20">
-                Clear Entire Queue
-              </Button>
+              <div className="flex items-center gap-2">
+                {waQueue.some(item => item.status === 'failed') && (
+                  <Button onClick={handleClearFailedQueue} variant="outline" size="sm" className="bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border-purple-500/20 text-xs">
+                    Clear Failed ({waQueue.filter(item => item.status === 'failed').length})
+                  </Button>
+                )}
+                <Button onClick={handleClearQueue} variant="destructive" size="sm" className="bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/20 text-xs">
+                  Clear Entire Queue
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {waQueue.length === 0 ? (
