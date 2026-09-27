@@ -1026,7 +1026,12 @@ export function Settings() {
                           {item.status === 'sent' && (
                             <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold">✓ Sent</span>
                           )}
-                          {item.status === 'failed' && (
+                          {item.status === 'failed' && item.errorCategory === 'Invalid Number' && (
+                            <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold">
+                              🚫 Not on WhatsApp
+                            </span>
+                          )}
+                          {item.status === 'failed' && item.errorCategory !== 'Invalid Number' && (
                             <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-bold">
                               ✗ Failed {item.errorCategory ? `(${item.errorCategory})` : ''}
                             </span>
@@ -1034,10 +1039,10 @@ export function Settings() {
                           {item.status === 'pending' && (
                             <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-bold animate-pulse">⏳ Pending</span>
                           )}
-                          {item.permanent && (
+                          {item.permanent && item.errorCategory !== 'Invalid Number' && (
                             <span className="text-[10px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-bold">Permanent Failure</span>
                           )}
-                          {(item.retryCount || 0) > 0 && !item.permanent && (
+                          {(item.retryCount || 0) > 0 && !item.permanent && item.status !== 'failed' && (
                             <span className="flex items-center gap-1 text-[10px] bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded font-bold">
                               <AlertCircle className="w-3 h-3" /> Retry {item.retryCount}/3
                             </span>
@@ -1046,8 +1051,12 @@ export function Settings() {
                         <p className="text-xs text-muted-foreground truncate max-w-[400px]">{item.message}</p>
                         {item.pdfName && <p className="text-[10px] text-indigo-400 mt-1">📎 {item.pdfName}</p>}
                         {(item.error || item.lastError) && (
-                          <p className="text-[11px] text-red-400/90 mt-1 bg-red-950/30 p-1.5 rounded border border-red-800/30 font-mono break-all max-w-[500px]">
-                            ⚠️ Reason: {item.errorCategory ? `[${item.errorCategory}] ` : ''}{item.error || item.lastError}
+                          <p className={`text-[11px] mt-1 p-1.5 rounded border font-mono break-all max-w-[500px] ${
+                            item.errorCategory === 'Invalid Number'
+                              ? 'bg-purple-950/40 border-purple-500/30 text-purple-300'
+                              : 'bg-red-950/30 border-red-800/30 text-red-400/90'
+                          }`}>
+                            ⚠️ {item.errorCategory === 'Invalid Number' ? 'Notice: Phone number is not registered on WhatsApp.' : `Reason: [${item.errorCategory || 'Error'}] ${item.error || item.lastError}`}
                           </p>
                         )}
                       </div>

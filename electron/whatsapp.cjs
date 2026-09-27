@@ -520,8 +520,8 @@ function startWhatsAppClient(ipcMain) {
                 isDisconnectError = true;
             } else if (errMsg.includes('SendTimeout')) {
                 errorCategory = 'Timeout';
-            } else if (errMsg.includes('Execution context was destroyed') || errMsg.includes('Navigating frame')) {
-                errorCategory = 'Browser/Puppeteer error';
+            } else if (errMsg.includes('Execution context was destroyed') || errMsg.includes('Navigating frame') || errMsg.includes('detached Frame') || errMsg.includes('detached frame')) {
+                errorCategory = 'Browser Frame Disconnected';
                 isDisconnectError = true;
             } else if (errMsg.includes('Evaluation failed')) {
                 errorCategory = 'Media file error';
