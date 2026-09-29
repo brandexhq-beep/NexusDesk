@@ -1041,42 +1041,75 @@ export function Settings() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="font-medium text-foreground text-sm">{item.chatId.replace('@c.us', '')}</span>
                           <span className="text-xs text-muted-foreground">{new Date(item.timestamp).toLocaleString()}</span>
-                          {/* Status badge */}
+                          {/* Status badges */}
                           {item.status === 'sent' && (
-                            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold">✓ Sent</span>
+                            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                              ✓ Sent
+                            </span>
                           )}
-                          {item.status === 'failed' && item.errorCategory === 'Invalid Number' && (
-                            <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold">
+                          {item.status === 'failed' && (item.errorCategory === 'Invalid Number' || item.errorCategory === 'Not a 10-Digit Mobile') && (
+                            <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
                               🚫 Not on WhatsApp
                             </span>
                           )}
-                          {item.status === 'failed' && item.errorCategory !== 'Invalid Number' && (
-                            <span className="text-[10px] bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-bold">
+                          {item.status === 'failed' && item.errorCategory === 'Invalid Phone Format' && (
+                            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                              ⚠️ Invalid 10-Digit Number
+                            </span>
+                          )}
+                          {item.status === 'failed' && !['Invalid Number', 'Not a 10-Digit Mobile', 'Invalid Phone Format'].includes(item.errorCategory || '') && (
+                            <span className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded font-bold flex items-center gap-1">
                               ✗ Failed {item.errorCategory ? `(${item.errorCategory})` : ''}
                             </span>
                           )}
                           {item.status === 'pending' && (
-                            <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-bold animate-pulse">⏳ Pending</span>
+                            <span className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
+                              ⏳ Pending
+                            </span>
                           )}
-                          {item.permanent && item.errorCategory !== 'Invalid Number' && (
-                            <span className="text-[10px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-bold">Permanent Failure</span>
+                          {item.permanent && !['Invalid Number', 'Not a 10-Digit Mobile', 'Invalid Phone Format'].includes(item.errorCategory || '') && (
+                            <span className="text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded font-bold">
+                              Permanent Failure
+                            </span>
                           )}
                           {(item.retryCount || 0) > 0 && !item.permanent && item.status !== 'failed' && (
-                            <span className="flex items-center gap-1 text-[10px] bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded font-bold">
+                            <span className="flex items-center gap-1 text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-2 py-0.5 rounded font-bold">
                               <AlertCircle className="w-3 h-3" /> Retry {item.retryCount}/3
                             </span>
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground truncate max-w-[400px]">{item.message}</p>
                         {item.pdfName && <p className="text-[10px] text-indigo-400 mt-1">📎 {item.pdfName}</p>}
+                        
+                        {/* Friendly Error Explanations */}
                         {(item.error || item.lastError) && (
-                          <p className={`text-[11px] mt-1 p-1.5 rounded border font-mono break-all max-w-[500px] ${
-                            item.errorCategory === 'Invalid Number'
+                          <div className={`text-[11px] mt-1.5 p-2 rounded-lg border flex items-start gap-1.5 max-w-[550px] ${
+                            item.errorCategory === 'Invalid Number' || item.errorCategory === 'Not a 10-Digit Mobile'
                               ? 'bg-purple-950/40 border-purple-500/30 text-purple-300'
+                              : item.errorCategory === 'Invalid Phone Format'
+                              ? 'bg-amber-950/40 border-amber-500/30 text-amber-300'
                               : 'bg-red-950/30 border-red-800/30 text-red-400/90'
                           }`}>
-                            ⚠️ {item.errorCategory === 'Invalid Number' ? 'Notice: Phone number is not registered on WhatsApp.' : `Reason: [${item.errorCategory || 'Error'}] ${item.error || item.lastError}`}
-                          </p>
+                            <span className="text-sm shrink-0">
+                              {item.errorCategory === 'Invalid Number' || item.errorCategory === 'Not a 10-Digit Mobile' ? '🚫' : item.errorCategory === 'Invalid Phone Format' ? '📱' : '⚠️'}
+                            </span>
+                            <div>
+                              <div className="font-semibold text-xs mb-0.5">
+                                {item.errorCategory === 'Invalid Number' || item.errorCategory === 'Not a 10-Digit Mobile'
+                                  ? 'Number Not Found on WhatsApp'
+                                  : item.errorCategory === 'Invalid Phone Format'
+                                  ? 'Invalid Indian Phone Number'
+                                  : item.errorCategory || 'Send Error'}
+                              </div>
+                              <div className="text-[11px] opacity-90 leading-relaxed font-sans">
+                                {item.errorCategory === 'Invalid Number' || item.errorCategory === 'Not a 10-Digit Mobile'
+                                  ? 'This phone number is valid in length but has no active WhatsApp account associated with it.'
+                                  : item.errorCategory === 'Invalid Phone Format'
+                                  ? 'The entered phone number is missing digits or invalid. Indian mobile numbers must be 10 digits starting with 6, 7, 8, or 9.'
+                                  : `Reason: ${item.error || item.lastError}`}
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-1 ml-4 shrink-0">
