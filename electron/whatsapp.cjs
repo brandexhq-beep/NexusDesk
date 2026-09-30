@@ -340,23 +340,34 @@ function startWhatsAppClient(ipcMain) {
     initClient();
 
     // ── IPC: Status ──────────────────────────────────────────────────────────
-    ipcMain.handle('whatsapp:getStatus', () => ({
-        ready: isClientReady,
-        qr: currentQR,
-        state: clientState,
-        initError,
-        startedAt,
-        elapsedMs: Date.now() - startedAt,
-        restartAttempts,
-        maxRestarts: MAX_RESTART_ATTEMPTS,
-        rateLimits: {
-            hourlyPromoUsed: hourlyPromoCount,
-            hourlyPromoMax: MAX_HOURLY_PROMO,
-            isDND: isDNDActive(),
-            dndStart: DND_START_HOUR_IST,
-            dndEnd: DND_END_HOUR_IST,
-        },
-    }));
+    ipcMain.handle('whatsapp:getStatus', () => {
+        let account = null;
+        if (client && client.info) {
+            account = {
+                phone: client.info.wid?.user || '',
+                name: client.info.pushname || '',
+                platform: client.info.platform || '',
+            };
+        }
+        return {
+            ready: isClientReady,
+            qr: currentQR,
+            state: clientState,
+            initError,
+            account,
+            startedAt,
+            elapsedMs: Date.now() - startedAt,
+            restartAttempts,
+            maxRestarts: MAX_RESTART_ATTEMPTS,
+            rateLimits: {
+                hourlyPromoUsed: hourlyPromoCount,
+                hourlyPromoMax: MAX_HOURLY_PROMO,
+                isDND: isDNDActive(),
+                dndStart: DND_START_HOUR_IST,
+                dndEnd: DND_END_HOUR_IST,
+            },
+        };
+    });
 
     // ── IPC: Manual Reconnect ────────────────────────────────────────────────
     ipcMain.handle('whatsapp:reconnect', () => {
@@ -365,7 +376,54 @@ function startWhatsAppClient(ipcMain) {
         stopHealthHeartbeat();
         try { if (client) { client.destroy().catch(() => {}); client = null; } } catch (_) {}
         setTimeout(() => initClient(), 500);
-        return { queued: true };
+        return { success: true };
+    });
+
+    // ── IPC: Manual Disconnect ───────────────────────────────────────────────
+    ipcMain.handle('whatsapp:disconnect', async () => {
+        console.log('[WhatsApp] Manual disconnect requested.');
+        stopHealthHeartbeat();
+        isClientReady = false;
+        currentQR = null;
+        clientState = 'disconnected';
+        initError = 'Disconnected by operator';
+        try {
+            if (client) {
+                await client.destroy().catch(() => {});
+                client = null;
+            }
+        } catch (_) {}
+        return { success: true };
+    });
+
+    // ── IPC: Logout & Unlink Session ────────────────────────────────────────
+    ipcMain.handle('whatsapp:logout', async () => {
+        console.log('[WhatsApp] Manual logout & unlink requested.');
+        stopHealthHeartbeat();
+        isClientReady = false;
+        currentQR = null;
+        clientState = 'starting';
+        initError = null;
+        try {
+            if (client) {
+                try { await client.logout(); } catch (_) {}
+                await client.destroy().catch(() => {});
+                client = null;
+            }
+        } catch (_) {}
+
+        try {
+            const authDataPath = path.join(app.getPath('userData'), '.wwebjs_auth');
+            if (fs.existsSync(authDataPath)) {
+                fs.rmSync(authDataPath, { recursive: true, force: true });
+                console.log('[WhatsApp] Cleared .wwebjs_auth directory.');
+            }
+        } catch (authRmErr) {
+            console.warn('[WhatsApp] Could not clean auth folder:', authRmErr.message);
+        }
+
+        setTimeout(() => initClient(), 500);
+        return { success: true };
     });
 
     // ── IPC: Send Invoice / Message ──────────────────────────────────────────
@@ -509,16 +567,34 @@ function startWhatsAppClient(ipcMain) {
             }
 
             const isPdf = !!itemToProcess.pdfBase64;
-            const sendPromise = media
-                ? client.sendMessage(itemToProcess.chatId, media, {
-                      caption: itemToProcess.message || '',
-                      sendMediaAsDocument: isPdf,
-                  })
-                : client.sendMessage(itemToProcess.chatId, itemToProcess.message);
+            let fallbackUsed = false;
 
-            await sendWithTimeout(sendPromise);
+            if (media) {
+                try {
+                    await sendWithTimeout(client.sendMessage(itemToProcess.chatId, media, {
+                        caption: itemToProcess.message || '',
+                        sendMediaAsDocument: isPdf,
+                    }), 30000);
+                } catch (mediaErr) {
+                    console.warn(`[WhatsApp] Media/PDF send failed (${mediaErr.message}). Attempting immediate itemized text fallback...`);
+                    if (itemToProcess.message) {
+                        try {
+                            await sendWithTimeout(client.sendMessage(itemToProcess.chatId, itemToProcess.message), 20000);
+                            fallbackUsed = true;
+                            console.log(`[WhatsApp] ✓ Delivered via itemized text fallback to ${itemToProcess.chatId}`);
+                        } catch (textErr) {
+                            console.error(`[WhatsApp] Text fallback also failed: ${textErr.message}`);
+                            throw textErr;
+                        }
+                    } else {
+                        throw mediaErr;
+                    }
+                }
+            } else if (itemToProcess.message) {
+                await sendWithTimeout(client.sendMessage(itemToProcess.chatId, itemToProcess.message), 20000);
+            }
 
-            console.log(`[WhatsApp] ✓ Sent to ${itemToProcess.chatId}`);
+            console.log(`[WhatsApp] ✓ Sent to ${itemToProcess.chatId}${fallbackUsed ? ' (Text Fallback)' : ''}`);
             lastSentTimes[itemToProcess.chatId] = Date.now();
             recordDailySend(itemToProcess.chatId);
             if (itemToProcess.isPromo) incrementHourlyPromo();
@@ -527,7 +603,7 @@ function startWhatsAppClient(ipcMain) {
                 status: 'sent',
                 completedAt: Date.now(),
                 error: null,
-                errorCategory: null
+                errorCategory: fallbackUsed ? 'Sent via Text Fallback' : null
             });
 
         } catch (error) {

@@ -149,3 +149,63 @@ export const generateInvoicePDF = async (
 
   return doc.output('blob');
 };
+
+export const generateInvoiceText = (
+  session: Session,
+  station: Station,
+  settings: AppSettings,
+  invoiceData: InvoiceData
+): string => {
+  const cafeName = settings.cafe_name || 'Sara Gaming Zone';
+  const currencyStr = settings.currency_symbol || '₹';
+  const googleReviewLink = settings.google_review_url || '';
+
+  const lines: string[] = [];
+  lines.push(`🎮 *${cafeName} - Tax Invoice*`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`👤 *Customer:* ${invoiceData.customerName}`);
+  lines.push(`🎯 *Station:* ${station.name}`);
+  if (session.num_players) {
+    lines.push(`👥 *Players:* ${session.num_players}`);
+  }
+  if (invoiceData.gameMinutes) {
+    lines.push(`⏱️ *Duration:* ${invoiceData.gameMinutes} mins`);
+  }
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`*ITEMS & CHARGES:*`);
+  
+  if (session.base_amount > 0) {
+    lines.push(`• Gaming Time (${invoiceData.gameMinutes || '?'} mins): ${currencyStr}${session.base_amount.toFixed(2)}`);
+  }
+  if (session.orders && session.orders.length > 0) {
+    session.orders.forEach(order => {
+      lines.push(`• ${order.name} x${order.quantity}: ${currencyStr}${(order.price_at_order * order.quantity).toFixed(2)}`);
+    });
+  }
+  if (invoiceData.loyaltyDiscount > 0) {
+    lines.push(`• Loyalty Discount (${invoiceData.pointsRedeemed} pts): -${currencyStr}${invoiceData.loyaltyDiscount.toFixed(2)}`);
+  }
+  if (invoiceData.specialDiscount > 0) {
+    lines.push(`• Special Discount: -${currencyStr}${invoiceData.specialDiscount.toFixed(2)}`);
+  }
+  if (invoiceData.customDiscount > 0) {
+    lines.push(`• Custom Discount: -${currencyStr}${invoiceData.customDiscount.toFixed(2)}`);
+  }
+
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`💰 *TOTAL AMOUNT: ${currencyStr}${session.total_amount.toFixed(2)}*`);
+  if (session.payment_mode) {
+    lines.push(`💳 *Payment Mode:* ${session.payment_mode.toUpperCase()}`);
+  }
+  if (invoiceData.pointsEarned > 0 && settings.loyalty_enabled !== false) {
+    lines.push(`⭐ *Loyalty Points Earned:* +${invoiceData.pointsEarned} pts`);
+  }
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(settings.invoice_footer_msg || 'Thank you for playing with us!');
+  if (googleReviewLink) {
+    lines.push(`\n⭐ *Leave us a review:* ${googleReviewLink}`);
+  }
+
+  return lines.join('\n');
+};
+

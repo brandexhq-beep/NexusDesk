@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld('api', {
     getStatus:   ()     => ipcRenderer.invoke('whatsapp:getStatus'),
     sendInvoice: (data) => ipcRenderer.invoke('whatsapp:sendInvoice', data),
     reconnect:   ()     => ipcRenderer.invoke('whatsapp:reconnect'),
+    disconnect:  ()     => ipcRenderer.invoke('whatsapp:disconnect'),
+    logout:      ()     => ipcRenderer.invoke('whatsapp:logout'),
   },
   auth: {
     login:  (password) => ipcRenderer.invoke('auth:login', password),

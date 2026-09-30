@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { db, whatsapp } from '../services/db';
 import type { Station, Session, Customer, PricingRule, AppSettings } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
-import { generateInvoicePDF } from '../lib/invoice';
+import { generateInvoicePDF, generateInvoiceText } from '../lib/invoice';
 
 interface StopSessionModalProps {
   station: Station | null;
@@ -219,9 +219,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
             reader.readAsDataURL(pdfBlob);
             reader.onloadend = () => {
               const base64data = (reader.result as string).split(',')[1];
-              const googleReviewLink = settings.google_review_url || "https://g.page/r/YOUR_UNIQUE_LINK/review";
-              const cafeName = settings.cafe_name || "us";
-              const message = `Hi ${customer.name},\n\nThank you for choosing ${cafeName}! Attached is your invoice for today's session.\n\nIf you have a moment, please leave us a review on Google using the link below:\n${googleReviewLink}\n\nThank you again, and we look forward to seeing you soon!`;
+              const message = generateInvoiceText(completedSession, station, settings, invoiceData);
 
               whatsapp.sendInvoice({
                 phone: customer.phone,

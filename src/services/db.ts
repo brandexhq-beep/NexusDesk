@@ -321,6 +321,8 @@ const createBrowserMockStorage = () => {
       getStatus: async () => ({ ready: false, qr: null }),
       sendInvoice: async () => {},
       reconnect: async () => {},
+      disconnect: async () => {},
+      logout: async () => {},
     },
     updater: {
       checkForUpdates: () => {},
@@ -498,6 +500,8 @@ export const whatsapp = {
   getStatus:   async () => api.whatsapp.getStatus(),
   sendInvoice: async (data: any) => api.whatsapp.sendInvoice(data),
   reconnect:   async () => api.whatsapp.reconnect(),
+  disconnect:  async () => api.whatsapp.disconnect(),
+  logout:      async () => api.whatsapp.logout(),
 };
 
 export const updater = {

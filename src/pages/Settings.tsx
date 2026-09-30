@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle, RefreshCw, Loader2, ShieldAlert } from 'lucide-react';
+import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle, RefreshCw, Loader2, ShieldAlert, LogOut, PowerOff, Phone, Smartphone } from 'lucide-react';
 import { PricingRuleModal } from '../components/PricingRuleModal';
 import { PricingManager } from '../components/PricingManager';
 import { ConfirmPasswordModal } from '../components/ConfirmPasswordModal';
@@ -190,6 +190,46 @@ export function Settings() {
       setWaQueue(prev => prev.filter(item => item.id !== id));
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const [waActionLoading, setWaActionLoading] = useState(false);
+
+  const handleWaReconnect = async () => {
+    setWaActionLoading(true);
+    try {
+      await whatsapp.reconnect();
+      toast.success('Reconnecting to WhatsApp...');
+    } catch (e: any) {
+      toast.error('Failed to reconnect: ' + (e?.message || 'Unknown error'));
+    } finally {
+      setTimeout(() => setWaActionLoading(false), 2000);
+    }
+  };
+
+  const handleWaDisconnect = async () => {
+    if (!window.confirm('Disconnect WhatsApp? Automated messages will be paused until reconnected.')) return;
+    setWaActionLoading(true);
+    try {
+      await whatsapp.disconnect();
+      toast.info('WhatsApp disconnected.');
+    } catch (e: any) {
+      toast.error('Failed to disconnect: ' + (e?.message || 'Unknown error'));
+    } finally {
+      setTimeout(() => setWaActionLoading(false), 1000);
+    }
+  };
+
+  const handleWaLogout = async () => {
+    if (!window.confirm('Are you sure you want to log out of WhatsApp? This will clear the linked session and generate a new QR code to scan.')) return;
+    setWaActionLoading(true);
+    try {
+      await whatsapp.logout();
+      toast.success('Logged out from WhatsApp. Generating new QR code...');
+    } catch (e: any) {
+      toast.error('Failed to logout: ' + (e?.message || 'Unknown error'));
+    } finally {
+      setTimeout(() => setWaActionLoading(false), 2000);
     }
   };
 
@@ -795,60 +835,199 @@ export function Settings() {
                 <CardTitle className="text-card-foreground flex items-center gap-2">
                   <MessageCircle className="w-5 h-5 text-indigo-400" /> WhatsApp Server Connection
                 </CardTitle>
-                <CardDescription>Scan the QR code to link your admin WhatsApp account for automated messages.</CardDescription>
+                <CardDescription>Link your admin WhatsApp account for sending automated invoices, reminders, and alerts.</CardDescription>
               </div>
-              {!waStatus.ready && (
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-white/10 gap-2 shrink-0"
-                  onClick={async () => {
-                    try { await whatsapp.reconnect(); } catch (_) {}
-                  }}
+                  disabled={waActionLoading}
+                  className="border-white/10 gap-2 shrink-0 hover:bg-white/5"
+                  onClick={handleWaReconnect}
                 >
-                  <RefreshCw className="w-4 h-4" /> Reconnect
+                  {waActionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Reconnect
                 </Button>
-              )}
+                {waStatus.ready && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={waActionLoading}
+                    className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 gap-2 shrink-0"
+                    onClick={handleWaDisconnect}
+                  >
+                    <PowerOff className="w-4 h-4" /> Disconnect
+                  </Button>
+                )}
+                {(waStatus.ready || (waStatus as any).state === 'disconnected' || (waStatus as any).state === 'error' || (waStatus as any).state === 'auth_failure') && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={waActionLoading}
+                    className="gap-2 shrink-0 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30"
+                    onClick={handleWaLogout}
+                  >
+                    <LogOut className="w-4 h-4" /> Logout / Switch
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 flex flex-col items-center justify-center p-8">
               {waStatus.ready ? (
-                <div className="flex flex-col items-center text-emerald-400 gap-3">
-                  <CheckCircle2 className="w-16 h-16" />
-                  <span className="text-lg font-bold">WhatsApp is Connected!</span>
-                  <p className="text-sm text-emerald-400/70 text-center max-w-sm">
-                    Invoices, session reminders, review requests and loyalty alerts will be sent automatically from your linked account.
-                  </p>
+                <div className="w-full max-w-lg flex flex-col items-center text-center gap-4 bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-6 shadow-xl">
+                  <div className="relative">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/30">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                    </div>
+                    <span className="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 border-2 border-background rounded-full animate-ping" />
+                    <span className="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 border-2 border-background rounded-full" />
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-lg font-bold text-emerald-300">WhatsApp is Connected & Active</h3>
+                    <p className="text-xs text-emerald-400/80 mt-1">
+                      Invoices, session reminders, review requests and loyalty alerts will be sent automatically.
+                    </p>
+                  </div>
+
+                  {(waStatus as any).account && (
+                    <div className="w-full grid grid-cols-2 gap-3 pt-3 mt-1 border-t border-emerald-500/15 text-left text-xs">
+                      <div className="bg-background/40 p-2.5 rounded-lg border border-white/5">
+                        <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Linked Phone</span>
+                        <span className="font-mono text-foreground font-medium flex items-center gap-1.5 mt-0.5">
+                          <Phone className="w-3.5 h-3.5 text-indigo-400" />
+                          +{(waStatus as any).account.phone || 'Unknown'}
+                        </span>
+                      </div>
+                      <div className="bg-background/40 p-2.5 rounded-lg border border-white/5">
+                        <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Account / Device</span>
+                        <span className="text-foreground font-medium truncate flex items-center gap-1.5 mt-0.5">
+                          <Smartphone className="w-3.5 h-3.5 text-indigo-400" />
+                          {(waStatus as any).account.name || (waStatus as any).account.platform || 'WhatsApp Web'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={waActionLoading}
+                      onClick={handleWaReconnect}
+                      className="border-white/10 text-xs gap-1.5 hover:bg-white/5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Refresh Session
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={waActionLoading}
+                      onClick={handleWaDisconnect}
+                      className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs gap-1.5"
+                    >
+                      <PowerOff className="w-3.5 h-3.5" /> Pause / Disconnect
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={waActionLoading}
+                      onClick={handleWaLogout}
+                      className="bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 text-xs gap-1.5"
+                    >
+                      <LogOut className="w-3.5 h-3.5" /> Unlink Account
+                    </Button>
+                  </div>
                 </div>
               ) : waStatus.qr ? (
-                <div className="flex flex-col items-center gap-4">
-                  <div className="bg-white p-4 rounded-xl shadow-2xl">
+                <div className="flex flex-col items-center gap-4 py-4">
+                  <div className="bg-white p-4 rounded-2xl shadow-2xl border-4 border-indigo-500/30">
                     <QRCodeCanvas value={waStatus.qr} size={256} />
                   </div>
-                  <span className="text-muted-foreground font-medium animate-pulse">Waiting for scan — open WhatsApp on your phone and scan this code…</span>
-                  <p className="text-xs text-muted-foreground/60 text-center max-w-xs">
-                    WhatsApp → Menu (⋮) → Linked Devices → Link a Device
-                  </p>
+                  <div className="text-center space-y-1">
+                    <span className="text-sm text-indigo-300 font-semibold animate-pulse block">Waiting for scan — open WhatsApp on your phone</span>
+                    <p className="text-xs text-muted-foreground max-w-sm">
+                      WhatsApp → Menu (⋮) or Settings → Linked Devices → Link a Device
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={waActionLoading}
+                    onClick={handleWaReconnect}
+                    className="border-white/10 text-xs gap-1.5 mt-2"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" /> Generate Fresh QR
+                  </Button>
                 </div>
               ) : (waStatus as any).state === 'auth_failure' ? (
-                <div className="flex flex-col items-center text-red-400 gap-3 py-8">
+                <div className="flex flex-col items-center text-red-400 gap-3 py-8 max-w-md text-center">
                   <AlertCircle className="w-12 h-12" />
-                  <span className="font-bold">Authentication Failed</span>
-                  <p className="text-sm text-red-400/70 text-center max-w-sm">Your session was rejected. A new QR code will appear shortly — please re-scan.</p>
+                  <span className="font-bold text-lg">Authentication Failed</span>
+                  <p className="text-sm text-red-400/80">Your linked WhatsApp session was rejected or expired. Please re-authenticate.</p>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={waActionLoading}
+                    onClick={handleWaLogout}
+                    className="mt-2 gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Reset & Scan QR
+                  </Button>
                 </div>
               ) : (waStatus as any).state === 'disconnected' ? (
-                <div className="flex flex-col items-center text-orange-400 gap-3 py-8">
-                  <AlertCircle className="w-12 h-12" />
-                  <span className="font-bold">Disconnected</span>
-                  <p className="text-sm text-orange-400/70 text-center max-w-sm">
-                    {(waStatus as any).initError || 'Connection lost. Attempting to reconnect automatically…'}
+                <div className="flex flex-col items-center text-amber-400 gap-3 py-8 max-w-md text-center">
+                  <PowerOff className="w-12 h-12" />
+                  <span className="font-bold text-lg">WhatsApp Disconnected</span>
+                  <p className="text-sm text-amber-400/80">
+                    {(waStatus as any).initError || 'Connection lost or paused. Automated messages are temporarily queued.'}
                   </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={waActionLoading}
+                      onClick={handleWaReconnect}
+                      className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 gap-2"
+                    >
+                      <RefreshCw className="w-4 h-4" /> Reconnect Now
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={waActionLoading}
+                      onClick={handleWaLogout}
+                      className="bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 gap-2"
+                    >
+                      <LogOut className="w-4 h-4" /> Reset & Link New Phone
+                    </Button>
+                  </div>
                 </div>
               ) : (waStatus as any).state === 'error' ? (
-                <div className="flex flex-col items-center text-red-400 gap-3 py-8">
+                <div className="flex flex-col items-center text-red-400 gap-3 py-8 max-w-md text-center">
                   <AlertCircle className="w-12 h-12" />
-                  <span className="font-bold">Server Error</span>
-                  <p className="text-sm text-red-400/70 text-center max-w-sm">{(waStatus as any).initError || 'The WhatsApp browser process could not start.'}</p>
-                  <p className="text-xs text-red-400/50">Make sure Chrome or Edge is installed on this computer.</p>
+                  <span className="font-bold text-lg">WhatsApp Service Error</span>
+                  <p className="text-sm text-red-400/80">{(waStatus as any).initError || 'The WhatsApp browser process encountered an issue.'}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={waActionLoading}
+                      onClick={handleWaReconnect}
+                      className="border-red-500/30 text-red-300 hover:bg-red-500/10 gap-2"
+                    >
+                      <RefreshCw className="w-4 h-4" /> Retry Connection
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={waActionLoading}
+                      onClick={handleWaLogout}
+                      className="bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 gap-2"
+                    >
+                      <LogOut className="w-4 h-4" /> Clean Reset
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-muted-foreground gap-3 py-8">
@@ -856,9 +1035,16 @@ export function Settings() {
                   <span className="font-medium">
                     {(waStatus as any).state === 'authenticated' ? 'Loading your linked account…' : 'Starting WhatsApp browser…'}
                   </span>
-                  <p className="text-xs text-muted-foreground/50">This can take 20–60 seconds on first launch.</p>
+                  <p className="text-xs text-muted-foreground/50">This can take 15–45 seconds on launch.</p>
                   {(waStatus as any).elapsedMs > 60000 && (
-                    <p className="text-xs text-yellow-400/70">Taking longer than expected. If this persists, click Reconnect above.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleWaReconnect}
+                      className="border-white/10 text-xs gap-1.5 mt-2"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Restart Process
+                    </Button>
                   )}
                 </div>
               )}
