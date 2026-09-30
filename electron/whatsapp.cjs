@@ -167,6 +167,11 @@ function buildClient() {
         authStrategy: new LocalAuth({
             dataPath: authDataPath,
         }),
+        webVersionCache: {
+            type: 'remote',
+            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1048860261-alpha.html',
+            strict: false,
+        },
         puppeteer: {
             headless: true,
             executablePath: getBrowserExecutablePath() || undefined,
@@ -211,12 +216,32 @@ function startWhatsAppClient(ipcMain) {
             clientState = 'qr';
         });
 
-        client.on('ready', () => {
+        client.on('ready', async () => {
             console.log('[WhatsApp] ✓ Client ready');
             isClientReady = true;
             currentQR = null;
             initError = null;
             clientState = 'ready';
+
+            try {
+                if (client && client.pupPage) {
+                    await client.pupPage.evaluate(() => {
+                        try {
+                            const MediaStorage = window.require && window.require('WAWebMediaStorage');
+                            if (MediaStorage && MediaStorage.getOrCreateMediaObject) {
+                                const orig = MediaStorage.getOrCreateMediaObject;
+                                MediaStorage.getOrCreateMediaObject = function(filehash) {
+                                    const obj = orig.apply(this, arguments);
+                                    if (obj && !obj.id && filehash) {
+                                        obj.id = filehash;
+                                    }
+                                    return obj;
+                                };
+                            }
+                        } catch (_) {}
+                    });
+                }
+            } catch (_) {}
             restartAttempts = 0;
             startHealthHeartbeat();
         });
@@ -483,8 +508,12 @@ function startWhatsAppClient(ipcMain) {
                 media = new MessageMedia(mime, base64Data, 'Image');
             }
 
+            const isPdf = !!itemToProcess.pdfBase64;
             const sendPromise = media
-                ? client.sendMessage(itemToProcess.chatId, itemToProcess.message, { media })
+                ? client.sendMessage(itemToProcess.chatId, media, {
+                      caption: itemToProcess.message || '',
+                      sendMediaAsDocument: isPdf,
+                  })
                 : client.sendMessage(itemToProcess.chatId, itemToProcess.message);
 
             await sendWithTimeout(sendPromise);
