@@ -140,12 +140,6 @@ function setupAutoUpdater() {
     }
   });
 
-  // IPC: install now (quit & install)
-  ipcMain.handle('updater:installNow', () => {
-    console.log('[Updater] Triggering quitAndInstall (silent overwrite & auto-restart)...');
-    autoUpdater.quitAndInstall(true, true);
-  });
-
   // Initial check & periodic checks in packaged production builds (every 2 hours)
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify().catch((e) => {
@@ -237,7 +231,23 @@ app.on('activate', () => {
 });
 
 let isQuitting = false;
+let isUpdating = false;
+
+// IPC: install now (quit & install)
+ipcMain.handle('updater:installNow', async () => {
+  console.log('[Updater] Triggering quitAndInstall (silent overwrite & auto-restart)...');
+  isUpdating = true;
+  try {
+    await stopWhatsAppClient();
+  } catch (_) {}
+  try {
+    closeDatabase();
+  } catch (_) {}
+  autoUpdater.quitAndInstall(false, true);
+});
+
 app.on('before-quit', async (e) => {
+  if (isUpdating) return; // Allow electron-updater to restart immediately without interception
   if (isQuitting) return; // Cleanup already in progress
 
   // Block the immediate quit to do async cleanup
