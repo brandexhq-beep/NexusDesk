@@ -335,6 +335,14 @@ function initDatabase() {
       id TEXT PRIMARY KEY,
       data TEXT
     );
+    CREATE TABLE IF NOT EXISTS pricing_categories (
+      id TEXT PRIMARY KEY,
+      data TEXT
+    );
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      data TEXT
+    );
     CREATE TABLE IF NOT EXISTS review_requests (
       id TEXT PRIMARY KEY,
       data TEXT

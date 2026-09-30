@@ -200,10 +200,32 @@ ipcMain.handle('db:backup:readImportFile', async (_, filePath) => {
 
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 app.on('ready', () => {
-  setupIpcHandlers();
-  startWhatsAppClient(ipcMain);
-  createWindow();
-  setupAutoUpdater();
+  console.log('[App] Application ready event triggered');
+  try {
+    setupIpcHandlers();
+    console.log('[App] Database IPC handlers initialized');
+  } catch (err) {
+    console.error('[App] Failed to setup database IPC handlers:', err);
+  }
+
+  try {
+    createWindow();
+    console.log('[App] Main browser window created');
+  } catch (err) {
+    console.error('[App] Failed to create main window:', err);
+  }
+
+  try {
+    startWhatsAppClient(ipcMain);
+  } catch (err) {
+    console.error('[App] Failed to start WhatsApp client:', err);
+  }
+
+  try {
+    setupAutoUpdater();
+  } catch (err) {
+    console.error('[App] Failed to setup auto updater:', err);
+  }
 });
 
 app.on('window-all-closed', () => {
