@@ -243,7 +243,7 @@ ipcMain.handle('updater:installNow', async () => {
   try {
     closeDatabase();
   } catch (_) {}
-  autoUpdater.quitAndInstall(true, true);
+  autoUpdater.quitAndInstall(false, true);
 });
 
 app.on('before-quit', async (e) => {

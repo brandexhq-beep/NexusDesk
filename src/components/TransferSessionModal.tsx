@@ -26,6 +26,11 @@ export function TransferSessionModal({
   const [targetStationId, setTargetStationId] = useState<string>('');
   const [numPlayers, setNumPlayers] = useState<number>(session?.num_players || 1);
   const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<import('../types').PricingCategory[]>([]);
+
+  useEffect(() => {
+    db.pricingCategories.getAll().then(setCategories).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (session) {
@@ -34,6 +39,14 @@ export function TransferSessionModal({
   }, [session]);
 
   if (!session || !currentStation) return null;
+
+  const effectiveStation = allStations.find(s => s.id === targetStationId) || currentStation;
+  const assignedCat = categories.find(c => c.id === effectiveStation.pricing_category_id);
+  const availablePlayerCounts: number[] = assignedCat?.player_counts?.length
+    ? assignedCat.player_counts
+    : (session.pricing_snapshot?.player_counts?.length 
+        ? session.pricing_snapshot.player_counts 
+        : (effectiveStation.player_rates ? Object.keys(effectiveStation.player_rates).map(Number).sort((a, b) => a - b) : [1, 2, 3, 4]));
 
   const availableTargetStations = allStations.filter(
     s => s.id !== currentStation.id && s.status === 'free'
@@ -128,28 +141,30 @@ export function TransferSessionModal({
             )}
           </div>
 
-          <div className="space-y-2 pt-2 border-t border-white/5">
-            <Label className="text-xs flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-cyan-400" />
-              Mid-Session Player Count
-            </Label>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4].map(p => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setNumPlayers(p)}
-                  className={`flex-1 py-1.5 text-xs rounded-md font-bold border transition-all ${
-                    numPlayers === p
-                      ? 'bg-cyan-500 border-cyan-400 text-black shadow-md'
-                      : 'bg-black/30 border-white/10 text-muted-foreground hover:text-white'
-                  }`}
-                >
-                  {p} Player{p > 1 ? 's' : ''}
-                </button>
-              ))}
+          {availablePlayerCounts.length > 1 && (
+            <div className="space-y-2 pt-2 border-t border-white/5">
+              <Label className="text-xs flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-cyan-400" />
+                Mid-Session Player Count
+              </Label>
+              <div className="flex gap-2">
+                {availablePlayerCounts.map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setNumPlayers(p)}
+                    className={`flex-1 py-1.5 text-xs rounded-md font-bold border transition-all ${
+                      numPlayers === p
+                        ? 'bg-cyan-500 border-cyan-400 text-black shadow-md'
+                        : 'bg-black/30 border-white/10 text-muted-foreground hover:text-white'
+                    }`}
+                  >
+                    {p} Player{p > 1 ? 's' : ''}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2">

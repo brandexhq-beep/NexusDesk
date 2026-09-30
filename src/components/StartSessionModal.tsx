@@ -76,6 +76,17 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
     }
   }, [station]);
 
+  const assignedCat = categories.find(c => c.id === station?.pricing_category_id);
+  const availablePlayerCounts: number[] = assignedCat?.player_counts?.length
+    ? assignedCat.player_counts
+    : (station?.player_rates ? Object.keys(station.player_rates).map(Number).sort((a, b) => a - b) : (station?.type.startsWith('ps5') || station?.type === 'pool' || station?.type === 'snooker' || station?.type.includes('multi') ? [1, 2, 3, 4] : [1]));
+
+  useEffect(() => {
+    if (availablePlayerCounts.length > 0 && !availablePlayerCounts.includes(numPlayers)) {
+      setNumPlayers(availablePlayerCounts[0]);
+    }
+  }, [availablePlayerCounts, numPlayers]);
+
   const executeStart = async () => {
     if (!station) return;
     try {
@@ -127,7 +138,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
         payment_mode: null,
         status: 'active',
         game_ids: selectedGameIds,
-        num_players: (station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('multi') || !!station.player_rates) ? numPlayers : undefined,
+        num_players: availablePlayerCounts.length > 1 ? numPlayers : (availablePlayerCounts[0] || 1),
         pricing_snapshot
       });
 
@@ -367,7 +378,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
             </Select>
           </div>
           
-          {(station?.type.startsWith('ps5') || station?.type === 'pool' || station?.type === 'snooker' || station?.type.includes('multi') || !!station?.player_rates) && (
+          {availablePlayerCounts.length > 1 && (
             <div className="space-y-2">
               <Label htmlFor="players">Number of Players</Label>
               <Select value={numPlayers.toString()} onValueChange={(v) => setNumPlayers(parseInt(v))}>
@@ -375,10 +386,11 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
                   <SelectValue placeholder="Select Players" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">1 Player</SelectItem>
-                  <SelectItem value="2">2 Players</SelectItem>
-                  <SelectItem value="3">3 Players</SelectItem>
-                  <SelectItem value="4">4 Players</SelectItem>
+                  {availablePlayerCounts.map(count => (
+                    <SelectItem key={count} value={count.toString()}>
+                      {count} {count === 1 ? 'Player' : 'Players'}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

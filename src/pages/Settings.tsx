@@ -56,6 +56,10 @@ export function Settings() {
   });
   const [loading, setLoading] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'ready'>('idle');
+  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
 
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
@@ -70,15 +74,29 @@ export function Settings() {
     loadSettings();
 
     if ((window as any).api?.updater) {
+      updater.onUpdateChecking(() => {
+        setUpdateState('checking');
+      });
       updater.onUpdateNotAvailable(() => {
         toast.dismiss();
         toast.success('Sara Gaming Zone is up to date!');
         setCheckingUpdate(false);
+        setUpdateState('idle');
       });
       updater.onUpdateAvailable((info: any) => {
-        toast.dismiss();
-        toast.info(`Update v${info?.version} is available and downloading!`, { duration: 8000 });
+        setUpdateInfo(info);
+        setUpdateState('available');
         setCheckingUpdate(false);
+        toast.info(`Update v${info?.version} is available and downloading!`);
+      });
+      updater.onUpdateProgress((progressObj: any) => {
+        setUpdateState('downloading');
+        setUpdateProgress(Math.round(progressObj?.percent || 0));
+      });
+      updater.onUpdateDownloaded((info: any) => {
+        setUpdateInfo(info);
+        setUpdateState('ready');
+        toast.success(`Update v${info?.version} downloaded and ready to install!`);
       });
       updater.onUpdateError((err: any) => {
         toast.dismiss();
@@ -89,14 +107,12 @@ export function Settings() {
           toast.error(`Update check: ${msg || 'Could not check updates'}`);
         }
         setCheckingUpdate(false);
+        setUpdateState('idle');
       });
     }
 
     return () => {
       if (waIntervalRef.current) clearInterval(waIntervalRef.current);
-      if ((window as any).api?.updater) {
-        updater.removeListeners();
-      }
     };
   }, []);
 
@@ -502,64 +518,118 @@ export function Settings() {
 
           <Card className="bg-black/40 backdrop-blur-md border-white/10">
             <CardHeader>
-              <CardTitle className="text-card-foreground">Application Updates</CardTitle>
+              <CardTitle className="text-card-foreground flex items-center justify-between">
+                <span>Application Updates</span>
+                {updateState === 'ready' && (
+                  <span className="text-xs bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full font-bold">
+                    v{updateInfo?.version || 'New'} Ready to Install
+                  </span>
+                )}
+                {updateState === 'downloading' && (
+                  <span className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded-full font-bold flex items-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Downloading {updateProgress}%
+                  </span>
+                )}
+              </CardTitle>
               <CardDescription>Check for newer versions of Sara Gaming Zone Management.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Button
-                variant="outline"
-                disabled={checkingUpdate}
-                className="border-white/10 bg-white/5 hover:bg-white/10 gap-2"
-                onClick={async () => {
-                  setCheckingUpdate(true);
-                  toast.dismiss();
-                  toast.info('Checking for updates...');
-                  try {
-                    if ((window as any).api?.updater) {
-                      const res = await updater.checkForUpdates();
-                      if (res?.status === 'dev_mode') {
-                        toast.dismiss();
-                        toast.info(res.message);
-                        setCheckingUpdate(false);
-                      } else if (res?.status === 'error') {
-                        toast.dismiss();
-                        const errMsg = res.message || '';
-                        if (errMsg.includes('404') || errMsg.includes('Cannot find') || errMsg.includes('releases.atom')) {
-                          toast.success('Sara Gaming Zone is up to date!');
-                        } else {
-                          toast.error(`Update check: ${errMsg}`);
-                        }
-                        setCheckingUpdate(false);
+            <CardContent className="space-y-4">
+              {updateState === 'downloading' && (
+                <div className="p-3.5 bg-indigo-950/30 border border-indigo-500/30 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-indigo-200 font-medium">Downloading update v{updateInfo?.version || ''}...</span>
+                    <span className="font-mono text-indigo-300 font-bold">{updateProgress}%</span>
+                  </div>
+                  <div className="w-full bg-black/60 rounded-full h-2 overflow-hidden border border-white/5">
+                    <div
+                      className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full transition-all duration-300 ease-out"
+                      style={{ width: `${updateProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {updateState === 'ready' && (
+                <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-emerald-300">Update v{updateInfo?.version} is Downloaded</h4>
+                    <p className="text-xs text-emerald-400/80 mt-0.5">Click below to restart the app and apply the update now.</p>
+                  </div>
+                  <Button
+                    disabled={isInstallingUpdate}
+                    onClick={async () => {
+                      setIsInstallingUpdate(true);
+                      try {
+                        await updater.installUpdate();
+                      } catch (e) {
+                        console.error('Failed to trigger update restart', e);
+                        setIsInstallingUpdate(false);
                       }
-                      // If res?.status === 'ok', registered event listeners handle available / not available / error
-                    } else {
-                      setTimeout(() => {
-                        toast.dismiss();
-                        toast.info('Automatic update check is active in packaged desktop builds.');
-                        setCheckingUpdate(false);
-                      }, 1000);
-                    }
-                  } catch (e: any) {
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-2 shrink-0"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isInstallingUpdate ? 'animate-spin' : ''}`} />
+                    {isInstallingUpdate ? 'Restarting...' : 'Restart & Install Now'}
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  disabled={checkingUpdate || updateState === 'downloading' || isInstallingUpdate}
+                  className="border-white/10 bg-white/5 hover:bg-white/10 gap-2"
+                  onClick={async () => {
+                    setCheckingUpdate(true);
                     toast.dismiss();
-                    const errMsg = e?.message || '';
-                    if (errMsg.includes('404') || errMsg.includes('Cannot find') || errMsg.includes('releases.atom')) {
-                      toast.success('Sara Gaming Zone is up to date!');
-                    } else {
-                      toast.error(errMsg || 'Failed to check for updates');
+                    toast.info('Checking for updates...');
+                    try {
+                      if ((window as any).api?.updater) {
+                        const res = await updater.checkForUpdates();
+                        if (res?.status === 'dev_mode') {
+                          toast.dismiss();
+                          toast.info(res.message);
+                          setCheckingUpdate(false);
+                        } else if (res?.status === 'error') {
+                          toast.dismiss();
+                          const errMsg = res.message || '';
+                          if (errMsg.includes('404') || errMsg.includes('Cannot find') || errMsg.includes('releases.atom')) {
+                            toast.success('Sara Gaming Zone is up to date!');
+                          } else {
+                            toast.error(`Update check: ${errMsg}`);
+                          }
+                          setCheckingUpdate(false);
+                        }
+                      } else {
+                        setTimeout(() => {
+                          toast.dismiss();
+                          toast.info('Automatic update check is active in packaged desktop builds.');
+                          setCheckingUpdate(false);
+                        }, 1000);
+                      }
+                    } catch (e: any) {
+                      toast.dismiss();
+                      const errMsg = e?.message || '';
+                      if (errMsg.includes('404') || errMsg.includes('Cannot find') || errMsg.includes('releases.atom')) {
+                        toast.success('Sara Gaming Zone is up to date!');
+                      } else {
+                        toast.error(errMsg || 'Failed to check for updates');
+                      }
+                      setCheckingUpdate(false);
                     }
-                    setCheckingUpdate(false);
-                  }
-                }}
-              >
-                {checkingUpdate ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
-                {checkingUpdate ? 'Checking for Updates...' : 'Check for Updates Now'}
-              </Button>
+                  }}
+                >
+                  {checkingUpdate ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  {checkingUpdate ? 'Checking for Updates...' : 'Check for Updates Now'}
+                </Button>
+              </div>
+
               <p className="text-xs text-muted-foreground">
-                Updates are downloaded automatically in the background. A notification will appear when one is ready to install.
+                Updates are downloaded automatically in the background. A restart button will appear here once download finishes.
               </p>
             </CardContent>
           </Card>

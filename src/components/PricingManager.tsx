@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { db } from '../services/db';
 import type { PricingCategory, Station } from '../types';
 import { Button } from '@/components/ui/button';
@@ -155,6 +155,53 @@ export function PricingManager() {
       return { ...prev, price_matrix: nextMatrix };
     });
     toast.success(`Copied ${sourceP}P prices to ${targetP}P`);
+  };
+
+  const applyDurationPreset = (presetDurations: number[]) => {
+    if (!localCategory) return;
+    setLocalCategory(prev => {
+      if (!prev) return prev;
+      const nextMatrix: Record<number, Record<number, number>> = {};
+      const sortedDurations = [...presetDurations].sort((a, b) => a - b);
+      
+      for (const d of sortedDurations) {
+        nextMatrix[d] = {};
+        for (const p of prev.player_counts) {
+          const existing = prev.price_matrix[d]?.[p];
+          if (existing !== undefined) {
+            nextMatrix[d][p] = existing;
+          } else {
+            const hRate = prev.price_matrix[60]?.[p] || (prev.hourly_rate || 200) * (p === 1 ? 1 : 1 + (p - 1) * 0.4);
+            nextMatrix[d][p] = Math.round((d / 60) * hRate);
+          }
+        }
+      }
+      return { ...prev, durations: sortedDurations, price_matrix: nextMatrix };
+    });
+    toast.success(`Generated ${presetDurations.length}-tier duration grid`);
+  };
+
+  const setPlayerCountPreset = (maxPlayers: number) => {
+    if (!localCategory) return;
+    const counts = Array.from({ length: maxPlayers }, (_, i) => i + 1);
+    setLocalCategory(prev => {
+      if (!prev) return prev;
+      const nextMatrix: Record<number, Record<number, number>> = {};
+      for (const d of prev.durations) {
+        nextMatrix[d] = {};
+        for (const p of counts) {
+          const existing = prev.price_matrix[d]?.[p];
+          if (existing !== undefined) {
+            nextMatrix[d][p] = existing;
+          } else {
+            const p1 = prev.price_matrix[d]?.[1] || 100;
+            nextMatrix[d][p] = Math.round(p1 * (1 + (p - 1) * 0.4));
+          }
+        }
+      }
+      return { ...prev, player_counts: counts, price_matrix: nextMatrix };
+    });
+    toast.success(`Set player count options to 1–${maxPlayers} players`);
   };
 
   const addDurationRow = () => {
@@ -501,16 +548,78 @@ export function PricingManager() {
       )}
       {/* Bulk Operations Toolbar */}
       {localCategory && (
-        <div className="bg-black/30 border border-white/10 p-4 rounded-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
-              <RefreshCw className="w-3.5 h-3.5" />
-              Bulk Operations Toolbar
-            </h3>
-            <span className="text-[11px] text-muted-foreground">Apply instant price modifications across all duration matrix cells</span>
+        <div className="bg-black/30 border border-white/10 p-4 rounded-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5" />
+                Quick Presets & Operations
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Toggle minute-by-minute pricing charts or change supported player limits with one click</p>
+            </div>
+            
+            {/* Quick Player Count Limits */}
+            <div className="flex items-center gap-1.5 bg-black/40 p-1.5 rounded-lg border border-white/5">
+              <span className="text-[10px] text-muted-foreground font-semibold px-1 uppercase">Max Players:</span>
+              {[1, 2, 3, 4].map(p => {
+                const isActive = localCategory.player_counts.length === p && localCategory.player_counts[p - 1] === p;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setPlayerCountPreset(p)}
+                    className={`px-2 py-0.5 text-xs font-bold rounded transition-all ${
+                      isActive 
+                        ? 'bg-cyan-500 text-black shadow' 
+                        : 'bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-white'
+                    }`}
+                  >
+                    {p}P
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          {/* Quick Duration Interval Generators */}
+          <div className="flex flex-wrap items-center gap-2 bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-500/20">
+            <span className="text-xs font-bold text-indigo-300 flex items-center gap-1">
+              ⚡ Minute Chart Presets:
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => applyDurationPreset([5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60])}
+              className="h-7 text-xs bg-indigo-600/20 hover:bg-indigo-600/40 border-indigo-500/30 text-indigo-200"
+            >
+              5-Min Minute Grid (5m–60m)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => applyDurationPreset([10, 20, 30, 40, 50, 60])}
+              className="h-7 text-xs bg-indigo-600/20 hover:bg-indigo-600/40 border-indigo-500/30 text-indigo-200"
+            >
+              10-Min Grid (10m–60m)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => applyDurationPreset([15, 30, 45, 60])}
+              className="h-7 text-xs bg-indigo-600/20 hover:bg-indigo-600/40 border-indigo-500/30 text-indigo-200"
+            >
+              15-Min Grid (15m–60m)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => applyDurationPreset([30, 60])}
+              className="h-7 text-xs bg-white/5 hover:bg-white/10 border-white/10 text-muted-foreground"
+            >
+              30m & 60m Standard Blocks
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
             <div className="p-3 bg-white/5 border border-white/10 rounded-lg space-y-2">
               <Label className="text-[11px] text-muted-foreground">Adjust All Prices by Flat ₹</Label>
               <div className="flex items-center gap-1.5">
