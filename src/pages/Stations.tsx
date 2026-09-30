@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { db } from '../services/db';
-import type { Station, Game } from '../types';
+import type { Station, Game, PricingCategory } from '../types';
+
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EditStationModal } from '../components/EditStationModal';
 import { AddStationModal } from '../components/AddStationModal';
@@ -8,7 +10,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { StationHistoryModal } from '../components/StationHistoryModal';
 import { PricingChartModal } from '../components/PricingChartModal';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2, Gamepad2, History, BarChart3 } from 'lucide-react';
+import { Plus, Trash2, Gamepad2, History, BarChart3, CheckSquare, Square, Layers } from 'lucide-react';
 
 export function Stations() {
   const [stations, setStations] = useState<Station[]>([]);
@@ -19,10 +21,19 @@ export function Stations() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [stationToDelete, setStationToDelete] = useState<Station | null>(null);
 
+  const [pricingCategories, setPricingCategories] = useState<PricingCategory[]>([]);
+  const [selectedStationIds, setSelectedStationIds] = useState<string[]>([]);
+  const [bulkCategoryId, setBulkCategoryId] = useState<string>('');
+
+
   const loadStations = () => {
-    Promise.all([db.stations.getAll(), db.games.getAll()]).then(([stData, gmData]) => {
+    Promise.all([db.stations.getAll(), db.games.getAll(), db.pricingCategories.getAll()]).then(([stData, gmData, catData]) => {
+      setPricingCategories(catData);
       setStations(stData);
       setGames(gmData);
+      if (catData.length > 0) {
+        setBulkCategoryId(prev => prev || catData[0].id);
+      }
     });
   };
 
@@ -69,6 +80,36 @@ export function Stations() {
     return { label: '🎲 OTHER GAMING', color: 'border-white/20 text-muted-foreground' };
   };
 
+  
+  const handleBulkAssign = async () => {
+    if (selectedStationIds.length === 0) {
+      toast.error('Please select at least one station');
+      return;
+    }
+    if (!bulkCategoryId) {
+      toast.error('Please select a pricing category');
+      return;
+    }
+    try {
+      await db.stations.bulkAssignCategory(selectedStationIds, bulkCategoryId);
+      const cat = pricingCategories.find(c => c.id === bulkCategoryId);
+      toast.success(`Assigned ${selectedStationIds.length} stations to category "${cat?.name || 'Category'}"`);
+      setSelectedStationIds([]);
+      loadStations();
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed bulk station assignment');
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedStationIds.length === stations.length) {
+      setSelectedStationIds([]);
+    } else {
+      setSelectedStationIds(stations.map(s => s.id));
+    }
+  };
+
   const sortedStations = [...stations].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
   // Group stations by category
@@ -94,6 +135,49 @@ export function Stations() {
           </Button>
           <Button onClick={() => setIsAddModalOpen(true)} className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
             <Plus className="w-4 h-4" /> Add Station
+          </Button>
+        </div>
+      </div>
+
+      {/* Bulk Station Assignment Toolbar */}
+      <div className="bg-black/40 border border-white/10 p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleSelectAll}
+            className="flex items-center gap-2 text-xs font-semibold text-muted-foreground hover:text-white px-3 py-1.5 rounded-lg bg-white/5 border border-white/10"
+          >
+            {selectedStationIds.length === stations.length && stations.length > 0 ? (
+              <CheckSquare className="w-4 h-4 text-indigo-400" />
+            ) : (
+              <Square className="w-4 h-4 text-muted-foreground" />
+            )}
+            <span>Select All ({selectedStationIds.length}/{stations.length})</span>
+          </button>
+          {selectedStationIds.length > 0 && (
+            <span className="text-xs text-indigo-300 font-bold bg-indigo-500/10 px-2.5 py-1 rounded-md border border-indigo-500/20">
+              {selectedStationIds.length} Stations Selected
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={bulkCategoryId}
+            onChange={(e) => setBulkCategoryId(e.target.value)}
+            className="bg-black/60 border border-white/10 rounded-lg text-xs px-3 py-2 text-foreground focus:outline-none focus:border-indigo-500 min-w-[200px]"
+          >
+            <option value="">Select Pricing Category...</option>
+            {pricingCategories.map(cat => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+          <Button
+            onClick={handleBulkAssign}
+            disabled={selectedStationIds.length === 0 || !bulkCategoryId}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold gap-1.5"
+          >
+            <Layers className="w-4 h-4" />
+            Apply Bulk Category Assignment
           </Button>
         </div>
       </div>
@@ -148,8 +232,24 @@ export function Stations() {
                     <CardHeader className="pb-3 border-b border-white/5">
                       <div className="flex justify-between items-start">
                         <div>
-                          <CardTitle className="text-xl font-bold tracking-tight">{s.name}</CardTitle>
-                          <p className="text-xs text-muted-foreground uppercase tracking-widest mt-0.5">{s.type.replace('_', ' ')}</p>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedStationIds.includes(s.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) setSelectedStationIds(prev => [...prev, s.id]);
+                                else setSelectedStationIds(prev => prev.filter(id => id !== s.id));
+                              }}
+                              className="w-4 h-4 rounded border-white/20 accent-indigo-500 cursor-pointer"
+                            />
+                            <CardTitle className="text-xl font-bold tracking-tight">{s.name}</CardTitle>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-xs text-muted-foreground uppercase tracking-widest">{s.type.replace('_', ' ')}</p>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 font-semibold border border-indigo-500/20">
+                              Cat: {pricingCategories.find(c => c.id === s.pricing_category_id)?.name || 'Default'}
+                            </span>
+                          </div>
                         </div>
                         <div className="flex flex-col items-end gap-1.5">
                           <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-widest ${
@@ -236,6 +336,7 @@ export function Stations() {
       <PricingChartModal
         open={isPricingModalOpen}
         onClose={() => setIsPricingModalOpen(false)}
+        onUpdate={loadStations}
       />
       <EditStationModal 
         station={editingStation} 

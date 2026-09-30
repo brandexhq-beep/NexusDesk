@@ -1,6 +1,6 @@
-import type { PricingRule, Station } from '../types';
+﻿import type { PricingCategory, PricingRule, PricingSnapshot, Station } from '../types';
 
-const PS5_PRICING_MATRIX: Record<number, Record<number, number>> = {
+export const PS5_PRICING_MATRIX: Record<number, Record<number, number>> = {
   5: { 1: 16, 2: 23, 3: 32, 4: 37 },
   10: { 1: 32, 2: 46, 3: 64, 4: 74 },
   15: { 1: 50, 2: 70, 3: 95, 4: 111 },
@@ -21,9 +21,9 @@ export function calculateDynamicCost(
   station: Station, 
   rules: PricingRule[],
   freeMinutes: number = 0,
-  numPlayers: number = 1
+  numPlayers: number = 1,
+  categoryOrSnapshot?: PricingCategory | PricingSnapshot | null
 ): { cost: number, minutesUsed: number } {
-  let cost = 0;
   let minutesUsed = 0;
   
   const startMins = Math.floor(startTimeMs / 60000);
@@ -49,7 +49,42 @@ export function calculateDynamicCost(
     return { cost: 0, minutesUsed };
   }
 
-  // Dynamic Sim Racing, VR 30-min Package & Multiplayer Pricing Calculation
+  // If a Category or Session Snapshot is provided, calculate exact rate from its matrix
+  if (categoryOrSnapshot && categoryOrSnapshot.price_matrix) {
+    const matrix = categoryOrSnapshot.price_matrix;
+    const availCounts = categoryOrSnapshot.player_counts || [1, 2, 3, 4];
+    const maxPlayers = Math.max(...availCounts, 1);
+    const players = Math.min(Math.max(1, numPlayers), maxPlayers);
+
+    // Direct match check if exact duration tier is defined in matrix (e.g. 15, 30, 45, 60, 90, 120 mins)
+    if (matrix[billableMins]?.[players] !== undefined) {
+      return { cost: matrix[billableMins][players], minutesUsed };
+    }
+
+    const hours = Math.floor(billableMins / 60);
+    const remainingMins = billableMins % 60;
+
+    const hourlyRate = matrix[60]?.[players] ?? categoryOrSnapshot.hourly_rate ?? station.hourly_rate;
+    let totalCost = hours * hourlyRate;
+
+    if (remainingMins > 0) {
+      if (matrix[remainingMins]?.[players] !== undefined) {
+        totalCost += matrix[remainingMins][players];
+      } else {
+        const sortedDurations = [...(categoryOrSnapshot.durations || [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60])].sort((a, b) => a - b);
+        const matchedChunk = sortedDurations.find(d => d >= remainingMins);
+        if (matchedChunk !== undefined && matrix[matchedChunk]?.[players] !== undefined) {
+          totalCost += matrix[matchedChunk][players];
+        } else {
+          totalCost += Math.round((remainingMins / 60) * hourlyRate);
+        }
+      }
+    }
+
+    return { cost: totalCost, minutesUsed };
+  }
+
+  // Dynamic Sim Racing, VR 30-min Package & Multiplayer Pricing Calculation (Fallback)
   const isMultiplayerType = station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('sim') || station.type.includes('vr') || station.type.includes('multi');
   if (isMultiplayerType || station.player_rates || station.player_rates_30min || station.rate_30min || numPlayers > 1) {
     const players = Math.min(Math.max(1, numPlayers), 4);
@@ -99,6 +134,7 @@ export function calculateDynamicCost(
 
   // Calculate chunks of time instead of iterating minute by minute
   let currMins = effectiveStartMins;
+  let cost = 0;
   
   while (currMins < endMins) {
     const currentMs = currMins * 60000;

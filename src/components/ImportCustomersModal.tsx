@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '../services/db';
+// @ts-ignore
 import * as XLSX from 'xlsx';
 import { Upload, FileSpreadsheet, ShieldAlert } from 'lucide-react';
 

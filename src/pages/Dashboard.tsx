@@ -412,7 +412,7 @@ function StationCard({
     } else {
       const customerFreeMins = customer ? customer.available_minutes : 0;
       const totalFreeMins = (activeSession.prepaid_duration_mins || 0) + customerFreeMins;
-      const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, totalFreeMins, activeSession.num_players);
+      const res = calculateDynamicCost(Number(activeSession.start_time), now, station, rules, totalFreeMins, activeSession.num_players, activeSession.pricing_snapshot);
       tempCost = (activeSession.base_amount || 0) + res.cost;
     }
     

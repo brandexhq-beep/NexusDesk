@@ -70,7 +70,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         const prepaidMinutes = session.prepaid_duration_mins || 0;
         const totalFreeMinutes = customerFreeMinutes + prepaidMinutes;
         
-        const res = calculateDynamicCost(Number(session.start_time), now, station, rules, totalFreeMinutes, session.num_players);
+        const res = calculateDynamicCost(Number(session.start_time), now, station, rules, totalFreeMinutes, session.num_players, session.pricing_snapshot);
         calculatedGameCost = (session.base_amount || 0) + res.cost;
         usedMins = Math.max(0, Math.min(customerFreeMinutes, res.minutesUsed - prepaidMinutes));
       }

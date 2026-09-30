@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
-import type { Station } from '../types';
-import { Trash2 } from 'lucide-react';
+import type { Station, PricingCategory, Game } from '../types';
+import { Trash2, Layers } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface EditStationModalProps {
   station: Station | null;
@@ -18,7 +19,9 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
   const [hourlyRate, setHourlyRate] = useState('');
   const [gracePeriod, setGracePeriod] = useState('0');
   const [installedGames, setInstalledGames] = useState<string[]>([]);
-  const [games, setGames] = useState<import('../types').Game[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
+  const [categories, setCategories] = useState<PricingCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   const [rate30m, setRate30m] = useState('');
@@ -32,12 +35,16 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
   const [rate30m4P, setRate30m4P] = useState('');
 
   useEffect(() => {
-    db.games.getAll().then(setGames);
+    Promise.all([db.games.getAll(), db.pricingCategories.getAll()]).then(([gmData, catData]) => {
+      setGames(gmData);
+      setCategories(catData);
+    });
   }, []);
 
   useEffect(() => {
     if (station) {
       setName(station.name);
+      setSelectedCategoryId(station.pricing_category_id || '');
       setHourlyRate(station.hourly_rate.toString());
       setRate30m(station.rate_30min?.toString() || '');
       setGracePeriod(station.grace_period_minutes?.toString() || '0');
@@ -52,6 +59,26 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
       setRate30m4P(station.player_rates_30min?.[4]?.toString() || '');
     }
   }, [station]);
+
+  const handleCategoryChange = (catId: string) => {
+    setSelectedCategoryId(catId);
+    const cat = categories.find(c => c.id === catId);
+    if (cat) {
+      const catHourly = cat.price_matrix[60]?.[1] || cat.hourly_rate || 200;
+      setHourlyRate(catHourly.toString());
+      if (cat.price_matrix[30]?.[1]) {
+        setRate30m(cat.price_matrix[30][1].toString());
+        setRate30m1P(cat.price_matrix[30][1].toString());
+      }
+      if (cat.price_matrix[60]?.[2]) setRate2P(cat.price_matrix[60][2].toString());
+      if (cat.price_matrix[60]?.[3]) setRate3P(cat.price_matrix[60][3].toString());
+      if (cat.price_matrix[60]?.[4]) setRate4P(cat.price_matrix[60][4].toString());
+
+      if (cat.price_matrix[30]?.[2]) setRate30m2P(cat.price_matrix[30][2].toString());
+      if (cat.price_matrix[30]?.[3]) setRate30m3P(cat.price_matrix[30][3].toString());
+      if (cat.price_matrix[30]?.[4]) setRate30m4P(cat.price_matrix[30][4].toString());
+    }
+  };
 
   const handleSave = async () => {
     if (!station) return;
@@ -73,6 +100,7 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
 
       await db.stations.update(station.id, {
         name,
+        pricing_category_id: selectedCategoryId || undefined,
         hourly_rate: p1Rate,
         rate_30min: rate30m1P ? Number(rate30m1P) : (rate30m ? Number(rate30m) : undefined),
         grace_period_minutes: Number(gracePeriod),
@@ -80,10 +108,13 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
         player_rates,
         player_rates_30min: Object.keys(player_rates_30min).length > 0 ? player_rates_30min : undefined,
       });
+
+      toast.success(`Updated station ${name}`);
       onUpdate();
       onClose();
     } catch (e) {
       console.error(e);
+      toast.error('Failed to update station');
     } finally {
       setLoading(false);
     }
@@ -95,178 +126,197 @@ export function EditStationModal({ station, onClose, onUpdate }: EditStationModa
       setLoading(true);
       try {
         await db.stations.delete(station.id);
+        toast.success(`Deleted station ${station.name}`);
         onUpdate();
         onClose();
       } catch (e) {
         console.error(e);
+        toast.error('Failed to delete station');
       } finally {
         setLoading(false);
       }
     }
   };
 
+  const selectedCat = categories.find(c => c.id === selectedCategoryId);
+
   return (
     <Dialog open={!!station} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="bg-card text-card-foreground border-border max-w-md">
+      <DialogContent className="bg-card text-card-foreground border-border max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Station Configuration</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Layers className="w-5 h-5 text-indigo-400" />
+            Edit Station & Pricing
+          </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4 mt-4 max-h-[75vh] overflow-y-auto pr-2">
-          <div className="space-y-2">
-            <Label>Station Name</Label>
+        <div className="space-y-4 mt-2 pr-1 text-xs">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Station Name</Label>
             <Input 
               value={name} 
               onChange={(e) => setName(e.target.value)} 
-              className="bg-background border-border"
+              placeholder="e.g. PS5 Unit 1"
+              className="text-xs"
             />
           </div>
 
-          <div className="space-y-2 pt-2 border-t border-white/5">
-            <Label className="text-xs font-bold uppercase tracking-wider text-emerald-400">30-Min Rate Matrix (₹ / 30 mins)</Label>
-            <div className="grid grid-cols-4 gap-2">
-              <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">1 Pax</span>
-                <Input 
-                  type="number" min="0"
-                  placeholder="e.g. 100"
-                  value={rate30m1P}
-                  onChange={e => setRate30m1P(e.target.value)}
-                  className="bg-background border-border text-xs"
-                />
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">2 Pax</span>
-                <Input 
-                  type="number" min="0"
-                  placeholder="e.g. 100"
-                  value={rate30m2P}
-                  onChange={e => setRate30m2P(e.target.value)}
-                  className="bg-background border-border text-xs"
-                />
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">3 Pax</span>
-                <Input 
-                  type="number" min="0"
-                  placeholder="e.g. 150"
-                  value={rate30m3P}
-                  onChange={e => setRate30m3P(e.target.value)}
-                  className="bg-background border-border text-xs"
-                />
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">4 Pax</span>
-                <Input 
-                  type="number" min="0"
-                  placeholder="e.g. 200"
-                  value={rate30m4P}
-                  onChange={e => setRate30m4P(e.target.value)}
-                  className="bg-background border-border text-xs"
-                />
-              </div>
+          {/* PRICING CATEGORY SELECTOR */}
+          <div className="space-y-1.5 bg-indigo-950/20 border border-indigo-500/20 p-3 rounded-lg">
+            <div className="flex justify-between items-center">
+              <Label className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5" /> Pricing Category
+              </Label>
+              {selectedCat && (
+                <span className="text-[11px] font-mono text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded">
+                  ₹{selectedCat.price_matrix[60]?.[1] || selectedCat.hourly_rate}/hr
+                </span>
+              )}
             </div>
+
+            <select
+              value={selectedCategoryId}
+              onChange={e => handleCategoryChange(e.target.value)}
+              className="w-full h-8 rounded-md border border-white/10 bg-black/60 px-2.5 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">Custom / Station Specific Rates</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} — ₹{c.price_matrix[60]?.[1] || c.hourly_rate}/hr
+                </option>
+              ))}
+            </select>
+
+            {selectedCat ? (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Inherits full rate matrix ({selectedCat.durations.join(', ')} mins, up to {Math.max(...selectedCat.player_counts)} players).
+              </p>
+            ) : (
+              <p className="text-[11px] text-amber-400/80 mt-1">
+                Using custom overrides below. Assign a category to automatically inherit unified prices.
+              </p>
+            )}
           </div>
 
-          <div className="space-y-2 pt-2 border-t border-white/5">
-            <Label className="text-xs font-bold uppercase tracking-wider text-indigo-400">1-Hour Rate Matrix (₹ / Hr)</Label>
-            <div className="grid grid-cols-4 gap-2">
-              <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">1 Pax</span>
-                <Input 
-                  type="number" min="0" step="1" 
-                  value={hourlyRate} 
-                  onChange={(e) => setHourlyRate(e.target.value)} 
-                  className="bg-background border-border text-xs"
-                />
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">2 Pax</span>
-                <Input 
-                  type="number" min="0"
-                  placeholder="e.g. 180"
-                  value={rate2P}
-                  onChange={e => setRate2P(e.target.value)}
-                  className="bg-background border-border text-xs"
-                />
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">3 Pax</span>
-                <Input 
-                  type="number" min="0"
-                  placeholder="e.g. 220"
-                  value={rate3P}
-                  onChange={e => setRate3P(e.target.value)}
-                  className="bg-background border-border text-xs"
-                />
-              </div>
-              <div>
-                <span className="text-[10px] text-muted-foreground block mb-1">4 Pax</span>
-                <Input 
-                  type="number" min="0"
-                  placeholder="e.g. 250"
-                  value={rate4P}
-                  onChange={e => setRate4P(e.target.value)}
-                  className="bg-background border-border text-xs"
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label>Grace Period (Minutes)</Label>
-            <div className="relative">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Base Hourly Rate (₹)</Label>
               <Input 
-                type="number" min="0" step="1" 
+                type="number"
+                value={hourlyRate} 
+                onChange={(e) => setHourlyRate(e.target.value)} 
+                placeholder="200"
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Grace Period (Mins)</Label>
+              <Input 
+                type="number"
                 value={gracePeriod} 
                 onChange={(e) => setGracePeriod(e.target.value)} 
-                className="bg-background border-border pr-12"
+                placeholder="0"
+                className="text-xs"
               />
-              <span className="absolute right-3 top-2.5 text-muted-foreground text-sm">mins</span>
             </div>
-            <p className="text-[10px] text-muted-foreground">Free time before billing starts.</p>
           </div>
 
-          <div className="space-y-2">
-            <Label>Installed Games (Optional)</Label>
-            <p className="text-[10px] text-muted-foreground">Select which games are available on this station.</p>
-            <div className="grid grid-cols-2 gap-2 border border-white/5 rounded-md p-3 bg-black/20 max-h-48 overflow-y-auto">
-              {games.filter(g => g.active).map(game => (
-                <label key={game.id} className="flex items-center gap-2 cursor-pointer group">
-                  <input 
+          {/* 30-min and Multi-player Rates overrides */}
+          <div className="space-y-2 pt-2 border-t border-white/10">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Rate Overrides (Optional)
+            </h4>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">2 Players (₹/hr)</Label>
+                <Input
+                  type="number"
+                  value={rate2P}
+                  onChange={e => setRate2P(e.target.value)}
+                  placeholder="e.g. 280"
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">3 Players (₹/hr)</Label>
+                <Input
+                  type="number"
+                  value={rate3P}
+                  onChange={e => setRate3P(e.target.value)}
+                  placeholder="e.g. 380"
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">4 Players (₹/hr)</Label>
+                <Input
+                  type="number"
+                  value={rate4P}
+                  onChange={e => setRate4P(e.target.value)}
+                  placeholder="e.g. 450"
+                  className="h-7 text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Installed Games Selection */}
+          <div className="space-y-1.5 pt-2 border-t border-white/10">
+            <Label className="text-xs">Installed Games ({installedGames.length})</Label>
+            <div className="max-h-32 overflow-y-auto border border-white/10 rounded-lg p-2 space-y-1 bg-black/20">
+              {games.map(game => (
+                <label key={game.id} className="flex items-center gap-2 cursor-pointer hover:bg-white/5 p-1 rounded">
+                  <input
                     type="checkbox"
                     checked={installedGames.includes(game.id)}
-                    onChange={(e) => {
+                    onChange={e => {
                       if (e.target.checked) {
                         setInstalledGames([...installedGames, game.id]);
                       } else {
                         setInstalledGames(installedGames.filter(id => id !== game.id));
                       }
                     }}
-                    className="rounded border-white/20 bg-black/40 text-indigo-500 focus:ring-indigo-500/50 cursor-pointer"
+                    className="rounded border-white/20 text-indigo-600 focus:ring-0"
                   />
-                  <span className="text-xs text-muted-foreground group-hover:text-white transition-colors">{game.name}</span>
+                  <span className="text-xs text-foreground">{game.name}</span>
                 </label>
               ))}
             </div>
           </div>
+        </div>
 
-          <Button onClick={handleSave} disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white mt-4">
-            {loading ? 'Saving...' : 'Save Changes'}
+        <div className="flex justify-between items-center mt-4 pt-3 border-t border-white/10">
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={handleDelete}
+            disabled={loading}
+            className="text-xs"
+          >
+            <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
           </Button>
-
-          {station?.status === 'occupied' ? (
-            <div className="text-center mt-2">
-              <p className="text-[10px] text-red-400 font-medium">Cannot delete a station with an active session.</p>
-              <Button disabled variant="outline" className="w-full border-red-500/20 text-red-500/50 mt-1">
-                Delete Station
-              </Button>
-            </div>
-          ) : (
-            <Button onClick={handleDelete} disabled={loading} variant="outline" className="w-full border-red-500/20 text-red-500 hover:bg-red-500/10 hover:text-red-400 mt-2">
-              <Trash2 className="w-4 h-4 mr-2" /> Delete Station
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              disabled={loading}
+              className="text-xs"
+            >
+              Cancel
             </Button>
-          )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSave}
+              disabled={loading}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs"
+            >
+              {loading ? 'Saving...' : 'Save Station'}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -20,6 +20,7 @@ interface StartSessionModalProps {
 export function StartSessionModal({ station, onClose, onStart }: StartSessionModalProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [combos, setCombos] = useState<MenuItem[]>([]);
+  const [categories, setCategories] = useState<import('../types').PricingCategory[]>([]);
   
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('walk-in');
   const [selectedComboId, setSelectedComboId] = useState<string>('none');
@@ -40,6 +41,7 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
       db.menu.getAll().then(items => {
         setCombos(items.filter(i => i.category === 'combo' && i.active));
       });
+      db.pricingCategories.getAll().then(setCategories);
       db.settings.get().then(settings => {
         setDelaySecs(settings.session_start_delay_sec || 0);
       });
@@ -87,11 +89,26 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
       }
 
       const selectedCombo = combos.find(c => c.id === selectedComboId);
+      const assignedCat = categories.find(c => c.id === station.pricing_category_id);
+      const pricing_snapshot: import('../types').PricingSnapshot | undefined = assignedCat ? {
+        category_id: assignedCat.id,
+        category_name: assignedCat.name,
+        durations: assignedCat.durations,
+        player_counts: assignedCat.player_counts,
+        price_matrix: assignedCat.price_matrix,
+        hourly_rate: assignedCat.hourly_rate,
+      } : (station.player_rates ? {
+        durations: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
+        player_counts: [1, 2, 3, 4],
+        price_matrix: { 60: station.player_rates },
+        hourly_rate: station.hourly_rate,
+      } : undefined);
       
       const prepaidDuration = isPrepaid ? (parseInt(prepaidHours) || 0) * 60 + (parseInt(prepaidMinutes) || 0) : null;
       let baseAmount = selectedCombo ? selectedCombo.price : 0;
       if (!selectedCombo && prepaidDuration) {
-        const { cost } = calculateDynamicCost(0, prepaidDuration * 60000, station, [], 0, numPlayers);
+        const assignedCat = categories.find(c => c.id === station.pricing_category_id);
+        const { cost } = calculateDynamicCost(0, prepaidDuration * 60000, station, [], 0, numPlayers, assignedCat);
         baseAmount = cost;
       }
       
@@ -110,7 +127,8 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
         payment_mode: null,
         status: 'active',
         game_ids: selectedGameIds,
-        num_players: (station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('multi') || !!station.player_rates) ? numPlayers : undefined
+        num_players: (station.type.startsWith('ps5') || station.type === 'pool' || station.type === 'snooker' || station.type.includes('multi') || !!station.player_rates) ? numPlayers : undefined,
+        pricing_snapshot
       });
 
       await db.stations.update(station.id, { status: 'occupied' });

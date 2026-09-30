@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
       update:   (id, data)  => ipcRenderer.invoke('db:stations:update', id, data),
       add:      (station)   => ipcRenderer.invoke('db:stations:add', station),
       delete:   (id)        => ipcRenderer.invoke('db:stations:delete', id),
+      bulkAssignCategory: (stationIds, categoryId) => ipcRenderer.invoke('db:stations:bulkAssignCategory', { stationIds, categoryId }),
     },
     customers: {
       getAll:   ()          => ipcRenderer.invoke('db:customers:getAll'),
@@ -33,6 +34,15 @@ contextBridge.exposeInMainWorld('api', {
     settings: {
       get:      ()          => ipcRenderer.invoke('db:settings:get'),
       update:   (data)      => ipcRenderer.invoke('db:settings:update', data),
+    },
+    pricingCategories: {
+      getAll:   ()          => ipcRenderer.invoke('db:pricingCategories:getAll'),
+      add:      (item)      => ipcRenderer.invoke('db:pricingCategories:add', item),
+      update:   (id, data)  => ipcRenderer.invoke('db:pricingCategories:update', id, data),
+      delete:   (id)        => ipcRenderer.invoke('db:pricingCategories:delete', id),
+    },
+    auditLogs: {
+      getAll:   ()          => ipcRenderer.invoke('db:auditLogs:getAll'),
     },
     pricingRules: {
       getAll:   ()          => ipcRenderer.invoke('db:pricingRules:getAll'),

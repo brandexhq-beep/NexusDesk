@@ -1,4 +1,4 @@
-export type StationType = 'ps5' | 'ps5_vr' | 'ps5_simracing' | 'snooker' | 'pc' | string;
+﻿export type StationType = 'ps5' | 'ps5_vr' | 'ps5_simracing' | 'snooker' | 'pc' | string;
 
 export interface Game {
   id: string;
@@ -20,6 +20,23 @@ export interface ReviewRequest {
 
 export type StationStatus = 'free' | 'occupied' | 'maintenance';
 
+export interface PricingCategory {
+  id: string;
+  name: string; // e.g. "PS5", "Sim Racing", "Pool Table", "Snooker Table", "VR Gaming"
+  description?: string;
+  is_archived?: boolean;
+  sort_order?: number;
+  durations: number[]; // e.g. [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
+  player_counts: number[]; // e.g. [1, 2, 3, 4]
+  // Matrix: mapping duration (in mins) -> player count -> price (in ₹)
+  // e.g. { "60": { "1": 200, "2": 280, "3": 380, "4": 450 } }
+  price_matrix: Record<number, Record<number, number>>;
+  hourly_rate?: number; // fallback hourly rate for single player
+  rate_30min?: number;
+  created_at?: number;
+  updated_at?: number;
+}
+
 export interface Station {
   id: string;
   name: string;
@@ -33,6 +50,8 @@ export interface Station {
   player_rates?: Record<number, number>;
   player_rates_30min?: Record<number, number>;
   sort_order?: number;
+  pricing_category_id?: string;
+  pricing_mode?: 'category' | 'custom';
 }
 
 export interface Customer {
@@ -59,6 +78,18 @@ export interface SessionOrder {
   price_at_order: number;
 }
 
+export interface PricingSnapshot {
+  category_id?: string;
+  category_name?: string;
+  durations: number[];
+  player_counts: number[];
+  price_matrix: Record<number, Record<number, number>>;
+  hourly_rate?: number;
+  rate_30min?: number;
+  player_rates?: Record<number, number>;
+  player_rates_30min?: Record<number, number>;
+}
+
 export interface Session {
   id: string;
   station_id: string;
@@ -79,6 +110,7 @@ export interface Session {
   reminders_sent?: string[];
   game_ids?: string[];
   num_players?: number;
+  pricing_snapshot?: PricingSnapshot;
 }
 
 export type MenuCategory = 'snack' | 'drink' | 'combo' | 'package';
@@ -164,4 +196,13 @@ export interface PricingRule {
   end_time: string; // HH:mm format, e.g., "16:00"
   fixed_hourly_rate: number;
   active: boolean;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: number;
+  action: string;
+  entity_type: string;
+  entity_id?: string;
+  details: string;
 }

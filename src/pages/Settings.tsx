@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle, RefreshCw, Loader2, ShieldAlert } from 'lucide-react';
 import { PricingRuleModal } from '../components/PricingRuleModal';
+import { PricingManager } from '../components/PricingManager';
 import { ConfirmPasswordModal } from '../components/ConfirmPasswordModal';
 import { QRCodeCanvas } from 'qrcode.react';
 import { toast } from 'sonner';
@@ -632,7 +633,8 @@ export function Settings() {
         </TabsContent>
 
         {/* PRICING TAB */}
-        <TabsContent value="pricing">
+        <TabsContent value="pricing" className="space-y-6">
+          <PricingManager />
           <Card className="bg-black/40 backdrop-blur-md border-white/10">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>

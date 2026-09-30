@@ -1,4 +1,4 @@
-import type { Station, Customer, Session, Transaction, MenuItem, AppSettings, PricingRule, Game } from '../types';
+import type { Station, Customer, Session, Transaction, MenuItem, AppSettings, PricingRule, Game, PricingCategory, AuditLog } from '../types';
 
 // The 'api' object is exposed via preload.cjs
 // @ts-ignore
@@ -21,11 +21,31 @@ const createBrowserMockStorage = () => {
       if (key === 'stations' && Array.isArray(parsed) && Array.isArray(defaultVal)) {
         return parsed.map((st: any) => {
           const matchedDefault = defaultVal.find((d: any) => d.id === st.id || d.name?.toLowerCase() === st.name?.toLowerCase());
-          if (matchedDefault && (!st.installed_games || st.installed_games.length === 0)) {
-            return { ...st, installed_games: matchedDefault.installed_games };
+          const updated = { ...st };
+          if (matchedDefault && (!updated.installed_games || updated.installed_games.length === 0)) {
+            updated.installed_games = matchedDefault.installed_games;
           }
-          return st;
+          if (!updated.pricing_category_id) {
+            if (matchedDefault && matchedDefault.pricing_category_id) {
+              updated.pricing_category_id = matchedDefault.pricing_category_id;
+            } else if (updated.type && updated.type.startsWith('ps5_sim')) {
+              updated.pricing_category_id = 'cat-simracing';
+            } else if (updated.type && updated.type.startsWith('ps5_vr')) {
+              updated.pricing_category_id = 'cat-vr';
+            } else if (updated.type === 'snooker') {
+              updated.pricing_category_id = 'cat-snooker';
+            } else if (updated.type === 'pool') {
+              updated.pricing_category_id = 'cat-pool';
+            } else {
+              updated.pricing_category_id = 'cat-ps5';
+            }
+          }
+          return updated;
         });
+      }
+
+      if (key === 'pricingCategories' && (!parsed || (Array.isArray(parsed) && parsed.length === 0))) {
+        return defaultVal;
       }
       return parsed;
     } catch {
@@ -57,15 +77,15 @@ const createBrowserMockStorage = () => {
   };
 
   const defaultStations: Station[] = [
-    { id: '1', name: 'PS5 Unit 1', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 1, installed_games: ['g1', 'g2', 'g3', 'g4', 'g9', 'g10'] },
-    { id: '2', name: 'PS5 Unit 2', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 2, installed_games: ['g1', 'g2', 'g3', 'g4', 'g9', 'g10'] },
-    { id: '3', name: 'PS5 Unit 3', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 3, installed_games: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g9', 'g10', 'g11'] },
-    { id: '4', name: 'PS5 Unit 4', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 4, installed_games: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g12', 'g13'] },
-    { id: '5', name: 'PS5 Unit 5', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 5, installed_games: ['g1', 'g2', 'g3', 'g4', 'g8', 'g9', 'g10', 'g14', 'g15', 'g16'] },
-    { id: '6', name: 'Sim Racing',  type: 'ps5_simracing', hourly_rate: 300, rate_30min: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 6 },
-    { id: '7', name: 'VR Gaming',   type: 'ps5_vr',        hourly_rate: 300, rate_30min: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 7 },
-    { id: '8', name: 'Snooker 1',  type: 'snooker',       hourly_rate: 200, rate_30min: 100, player_rates: { 2: 200, 4: 300 }, player_rates_30min: { 2: 100, 4: 200 }, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 8 },
-    { id: '9', name: 'Pool Table 1', type: 'pool',        hourly_rate: 180, rate_30min: 100, player_rates: { 2: 180, 4: 250 }, player_rates_30min: { 2: 100, 4: 150 }, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 9 },
+    { id: '1', name: 'PS5 Unit 1', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 1, installed_games: ['g1', 'g2', 'g3', 'g4', 'g9', 'g10'], pricing_category_id: 'cat-ps5' },
+    { id: '2', name: 'PS5 Unit 2', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 2, installed_games: ['g1', 'g2', 'g3', 'g4', 'g9', 'g10'], pricing_category_id: 'cat-ps5' },
+    { id: '3', name: 'PS5 Unit 3', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 3, installed_games: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g9', 'g10', 'g11'], pricing_category_id: 'cat-ps5' },
+    { id: '4', name: 'PS5 Unit 4', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 4, installed_games: ['g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'g12', 'g13'], pricing_category_id: 'cat-ps5' },
+    { id: '5', name: 'PS5 Unit 5', type: 'ps5', hourly_rate: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 5, installed_games: ['g1', 'g2', 'g3', 'g4', 'g8', 'g9', 'g10', 'g14', 'g15', 'g16'], pricing_category_id: 'cat-ps5' },
+    { id: '6', name: 'Sim Racing',  type: 'ps5_simracing', hourly_rate: 300, rate_30min: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 6, pricing_category_id: 'cat-simracing' },
+    { id: '7', name: 'VR Gaming',   type: 'ps5_vr',        hourly_rate: 300, rate_30min: 200, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 7, pricing_category_id: 'cat-vr' },
+    { id: '8', name: 'Snooker 1',  type: 'snooker',       hourly_rate: 200, rate_30min: 100, player_rates: { 2: 200, 4: 300 }, player_rates_30min: { 2: 100, 4: 200 }, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 8, pricing_category_id: 'cat-snooker' },
+    { id: '9', name: 'Pool Table 1', type: 'pool',        hourly_rate: 180, rate_30min: 100, player_rates: { 2: 180, 4: 250 }, player_rates_30min: { 2: 100, 4: 150 }, status: 'free', overtime_block_minutes: 15, grace_period_minutes: 5, sort_order: 9, pricing_category_id: 'cat-pool' },
   ];
 
   const defaultGames: Game[] = [
@@ -152,7 +172,15 @@ const createBrowserMockStorage = () => {
 
   return {
     db: {
-      stations: createTableHandlers<Station>('stations', defaultStations),
+      stations: {
+        ...createTableHandlers<Station>('stations', defaultStations),
+        bulkAssignCategory: async (stationIds: string[], categoryId: string) => {
+          const items = getStored('stations', defaultStations) as Station[];
+          const next = items.map((s: any) => stationIds.includes(s.id) ? { ...s, pricing_category_id: categoryId } : s);
+          setStored('stations', next);
+          return { success: true, count: stationIds.length };
+        }
+      },
       customers: createTableHandlers<Customer>('customers', []),
       sessions: {
         ...createTableHandlers<Session>('sessions', []),
@@ -163,6 +191,94 @@ const createBrowserMockStorage = () => {
       },
       menu: createTableHandlers<MenuItem>('menu', defaultMenu),
       transactions: createTableHandlers<Transaction>('transactions', []),
+      
+    pricingCategories: createTableHandlers<PricingCategory>('pricingCategories', [
+      {
+        id: 'cat-ps5',
+        name: 'PS5',
+        description: 'PlayStation 5 Console Gaming',
+        sort_order: 1,
+        durations: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
+        player_counts: [1, 2, 3, 4],
+        price_matrix: {
+          5: { 1: 16, 2: 23, 3: 32, 4: 37 },
+          10: { 1: 32, 2: 46, 3: 64, 4: 74 },
+          15: { 1: 50, 2: 70, 3: 95, 4: 111 },
+          20: { 1: 66, 2: 93, 3: 127, 4: 150 },
+          25: { 1: 82, 2: 116, 3: 158, 4: 187 },
+          30: { 1: 100, 2: 140, 3: 190, 4: 224 },
+          35: { 1: 116, 2: 163, 3: 222, 4: 261 },
+          40: { 1: 132, 2: 186, 3: 253, 4: 300 },
+          45: { 1: 150, 2: 210, 3: 285, 4: 337 },
+          50: { 1: 164, 2: 233, 3: 317, 4: 374 },
+          55: { 1: 180, 2: 256, 3: 348, 4: 411 },
+          60: { 1: 200, 2: 280, 3: 380, 4: 450 }
+        },
+        hourly_rate: 200
+      },
+      {
+        id: 'cat-simracing',
+        name: 'Sim Racing',
+        description: 'Cockpit Racing Simulator',
+        sort_order: 2,
+        durations: [30, 60],
+        player_counts: [1, 2],
+        price_matrix: {
+          30: { 1: 180, 2: 250 },
+          60: { 1: 300, 2: 400 }
+        },
+        hourly_rate: 300
+      },
+      {
+        id: 'cat-vr',
+        name: 'VR Gaming',
+        description: 'Virtual Reality Gaming Headset',
+        sort_order: 3,
+        durations: [15, 30, 60],
+        player_counts: [1, 2],
+        price_matrix: {
+          15: { 1: 80, 2: 120 },
+          30: { 1: 150, 2: 220 },
+          60: { 1: 250, 2: 350 }
+        },
+        hourly_rate: 250
+      },
+      {
+        id: 'cat-pool',
+        name: 'Pool Table',
+        description: 'Standard Pool Table',
+        sort_order: 4,
+        durations: [30, 60],
+        player_counts: [1, 2, 3, 4],
+        price_matrix: {
+          30: { 1: 100, 2: 100, 3: 130, 4: 150 },
+          60: { 1: 180, 2: 180, 3: 220, 4: 250 }
+        },
+        hourly_rate: 180
+      },
+      {
+        id: 'cat-snooker',
+        name: 'Snooker Table',
+        description: 'Tournament Snooker Table',
+        sort_order: 5,
+        durations: [30, 60],
+        player_counts: [1, 2, 3, 4],
+        price_matrix: {
+          30: { 1: 100, 2: 100, 3: 150, 4: 200 },
+          60: { 1: 200, 2: 200, 3: 250, 4: 300 }
+        },
+        hourly_rate: 200
+      }
+    ]),
+    auditLogs: {
+        ...createTableHandlers<AuditLog>('auditLogs', []),
+        add: async (log: Omit<AuditLog, 'id' | 'timestamp'>) => {
+          const items = getStored('auditLogs', []);
+          const newLog = { ...log, id: crypto.randomUUID(), timestamp: Date.now() };
+          setStored('auditLogs', [newLog, ...items]);
+          return newLog;
+        }
+      },
       pricingRules: createTableHandlers<PricingRule>('pricingRules', []),
       reviewRequests: {
         getAll: async () => getStored('review_requests', []),
@@ -240,6 +356,7 @@ export const db = {
       return api.db.stations.add(newStation);
     },
     delete: async (id: string): Promise<void> => api.db.stations.delete(id),
+    bulkAssignCategory: async (stationIds: string[], categoryId: string): Promise<{ success: boolean, count: number }> => api.db.stations.bulkAssignCategory ? api.db.stations.bulkAssignCategory(stationIds, categoryId) : { success: true, count: stationIds.length },
   },
   customers: {
     getAll:  async (): Promise<Customer[]> => api.db.customers.getAll(),
@@ -291,6 +408,25 @@ export const db = {
   settings: {
     get:    async (): Promise<AppSettings>               => api.db.settings.get(),
     update: async (data: Partial<AppSettings>): Promise<void> => api.db.settings.update(data),
+  },
+  
+  pricingCategories: {
+    getAll:  async (): Promise<PricingCategory[]> => api.db.pricingCategories?.getAll() || [],
+    add:     async (cat: Omit<PricingCategory, 'id'>): Promise<PricingCategory> => {
+      const newCat = { ...cat, id: crypto.randomUUID(), created_at: Date.now() };
+      return api.db.pricingCategories?.add(newCat);
+    },
+    update:  async (id: string, data: Partial<PricingCategory>): Promise<void> => api.db.pricingCategories?.update(id, data),
+    delete:  async (id: string): Promise<void> => api.db.pricingCategories?.delete(id),
+  },
+  auditLogs: {
+    getAll: async (): Promise<AuditLog[]> => api.db.auditLogs?.getAll() || [],
+    add: async (log: Omit<AuditLog, 'id' | 'timestamp'>): Promise<AuditLog> => {
+      if (api.db.auditLogs && api.db.auditLogs.add) {
+        return api.db.auditLogs.add(log);
+      }
+      return { ...log, id: crypto.randomUUID(), timestamp: Date.now() };
+    }
   },
   pricingRules: {
     getAll:  async (): Promise<PricingRule[]>                    => api.db.pricingRules.getAll(),

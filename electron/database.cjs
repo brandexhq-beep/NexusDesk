@@ -503,6 +503,177 @@ function setupIpcHandlers() {
     db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(JSON.stringify({ ...current, ...data }), 'app_settings');
   });
 
+  
+  // Seed pricing categories if empty
+  const categoriesCount = db.prepare('SELECT COUNT(*) as count FROM pricing_categories').get();
+  if (categoriesCount.count === 0) {
+    const defaultCategories = [
+      {
+        id: 'cat-ps5',
+        name: 'PS5',
+        description: 'PlayStation 5 Console Gaming',
+        sort_order: 1,
+        durations: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
+        player_counts: [1, 2, 3, 4],
+        price_matrix: {
+          5: { 1: 16, 2: 23, 3: 32, 4: 37 },
+          10: { 1: 32, 2: 46, 3: 64, 4: 74 },
+          15: { 1: 50, 2: 70, 3: 95, 4: 111 },
+          20: { 1: 66, 2: 93, 3: 127, 4: 150 },
+          25: { 1: 82, 2: 116, 3: 158, 4: 187 },
+          30: { 1: 100, 2: 140, 3: 190, 4: 224 },
+          35: { 1: 116, 2: 163, 3: 222, 4: 261 },
+          40: { 1: 132, 2: 186, 3: 253, 4: 300 },
+          45: { 1: 150, 2: 210, 3: 285, 4: 337 },
+          50: { 1: 164, 2: 233, 3: 317, 4: 374 },
+          55: { 1: 180, 2: 256, 3: 348, 4: 411 },
+          60: { 1: 200, 2: 280, 3: 380, 4: 450 }
+        },
+        hourly_rate: 200
+      },
+      {
+        id: 'cat-simracing',
+        name: 'Sim Racing',
+        description: 'Cockpit Racing Simulator',
+        sort_order: 2,
+        durations: [30, 60],
+        player_counts: [1, 2],
+        price_matrix: {
+          30: { 1: 180, 2: 250 },
+          60: { 1: 300, 2: 400 }
+        },
+        hourly_rate: 300
+      },
+      {
+        id: 'cat-vr',
+        name: 'VR Gaming',
+        description: 'Virtual Reality Gaming Headset',
+        sort_order: 3,
+        durations: [15, 30, 60],
+        player_counts: [1, 2],
+        price_matrix: {
+          15: { 1: 80, 2: 120 },
+          30: { 1: 150, 2: 220 },
+          60: { 1: 250, 2: 350 }
+        },
+        hourly_rate: 250
+      },
+      {
+        id: 'cat-pool',
+        name: 'Pool Table',
+        description: 'Standard Pool Table',
+        sort_order: 4,
+        durations: [30, 60],
+        player_counts: [1, 2, 3, 4],
+        price_matrix: {
+          30: { 1: 100, 2: 100, 3: 130, 4: 150 },
+          60: { 1: 180, 2: 180, 3: 220, 4: 250 }
+        },
+        hourly_rate: 180
+      },
+      {
+        id: 'cat-snooker',
+        name: 'Snooker Table',
+        description: 'Tournament Snooker Table',
+        sort_order: 5,
+        durations: [30, 60],
+        player_counts: [1, 2, 3, 4],
+        price_matrix: {
+          30: { 1: 100, 2: 100, 3: 150, 4: 200 },
+          60: { 1: 200, 2: 200, 3: 250, 4: 300 }
+        },
+        hourly_rate: 200
+      }
+    ];
+    for (const cat of defaultCategories) {
+      jsonStore.add('pricing_categories', cat);
+    }
+  }
+
+  // Auto-assign category to any station missing pricing_category_id
+  const currentStations = jsonStore.getAll('stations');
+  for (const st of currentStations) {
+    if (!st.pricing_category_id) {
+      let catId = 'cat-ps5';
+      const t = (st.type || '').toLowerCase();
+      if (t.includes('sim')) catId = 'cat-simracing';
+      else if (t.includes('vr')) catId = 'cat-vr';
+      else if (t.includes('pool')) catId = 'cat-pool';
+      else if (t.includes('snooker')) catId = 'cat-snooker';
+      jsonStore.update('stations', st.id, { pricing_category_id: catId, pricing_mode: st.pricing_mode || 'category' });
+    }
+  }
+
+  
+  // PRICING CATEGORIES
+  handleSafe('db:pricingCategories:getAll', () => jsonStore.getAll('pricing_categories'));
+  handleSafe('db:pricingCategories:add', (_, item) => {
+    const cat = jsonStore.add('pricing_categories', item);
+    const logId = crypto.randomUUID();
+    jsonStore.add('audit_logs', {
+      id: logId,
+      timestamp: Date.now(),
+      action: 'PRICING_CATEGORY_CREATED',
+      entity_type: 'pricing_category',
+      entity_id: cat.id,
+      details: `Created pricing category ${cat.name}`
+    });
+    return cat;
+  });
+  handleSafe('db:pricingCategories:update', (_, id, d) => {
+    jsonStore.update('pricing_categories', id, d);
+    const logId = crypto.randomUUID();
+    jsonStore.add('audit_logs', {
+      id: logId,
+      timestamp: Date.now(),
+      action: 'PRICING_CATEGORY_UPDATED',
+      entity_type: 'pricing_category',
+      entity_id: id,
+      details: `Updated pricing category ${id}`
+    });
+  });
+  handleSafe('db:pricingCategories:delete', (_, id) => {
+    jsonStore.delete('pricing_categories', id);
+    const logId = crypto.randomUUID();
+    jsonStore.add('audit_logs', {
+      id: logId,
+      timestamp: Date.now(),
+      action: 'PRICING_CATEGORY_DELETED',
+      entity_type: 'pricing_category',
+      entity_id: id,
+      details: `Deleted pricing category ${id}`
+    });
+  });
+
+  // BULK STATION ASSIGNMENT (Transactional)
+  handleSafe('db:stations:bulkAssignCategory', (_, { stationIds, categoryId }) => {
+    if (!Array.isArray(stationIds) || !categoryId) {
+      throw new Error('Invalid params for bulk station assignment');
+    }
+    const bulkTx = db.transaction((ids, catId) => {
+      for (const id of ids) {
+        const st = jsonStore.getById('stations', id);
+        if (st) {
+          jsonStore.update('stations', id, { pricing_category_id: catId, pricing_mode: 'category' });
+        }
+      }
+      const logId = crypto.randomUUID();
+      const logData = {
+        id: logId,
+        timestamp: Date.now(),
+        action: 'STATION_CATEGORY_BULK_ASSIGNED',
+        entity_type: 'station',
+        details: `Assigned ${ids.length} stations to category ${catId}`
+      };
+      db.prepare('INSERT INTO audit_logs (id, data) VALUES (?, ?)').run(logId, JSON.stringify(logData));
+    });
+    bulkTx(stationIds, categoryId);
+    return { success: true, count: stationIds.length };
+  });
+
+  // AUDIT LOGS
+  handleSafe('db:auditLogs:getAll', () => jsonStore.getAll('audit_logs'));
+
   // PRICING RULES
   handleSafe('db:pricingRules:getAll',    ()          => jsonStore.getAll('pricing_rules'));
   handleSafe('db:pricingRules:add',       (_, item)   => jsonStore.add('pricing_rules', item));
@@ -571,6 +742,8 @@ function setupIpcHandlers() {
       games: jsonStore.getAll('games'),
       expenses: jsonStore.getAll('expenses'),
       whatsapp_promotions: jsonStore.getAll('whatsapp_promotions'),
+      pricing_categories: jsonStore.getAll('pricing_categories'),
+      audit_logs: jsonStore.getAll('audit_logs'),
     };
   });
 
@@ -615,6 +788,8 @@ function setupIpcHandlers() {
       restoreTable('games', data.games);
       restoreTable('expenses', data.expenses);
       restoreTable('whatsapp_promotions', data.whatsapp_promotions || data.whatsappPromotions);
+      restoreTable('pricing_categories', data.pricing_categories || data.pricingCategories);
+      restoreTable('audit_logs', data.audit_logs || data.auditLogs);
     });
 
     restoreTx(backupData);
