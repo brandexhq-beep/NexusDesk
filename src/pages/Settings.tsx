@@ -1289,6 +1289,30 @@ export function Settings() {
               </div>
             </CardHeader>
             <CardContent>
+              {/* If there are pending items and client is disconnected or had detached frame */}
+              {((waStatus as any).state === 'disconnected' || (waStatus as any).state === 'error' || waQueue.some(i => (i.errorCategory || '').includes('Browser Frame Disconnected') || (i.error || '').includes('detached Frame'))) && (
+                <div className="mb-4 p-3.5 rounded-xl border border-amber-500/40 bg-amber-950/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-300">WhatsApp Engine Needs Reconnection</h4>
+                      <p className="text-[11px] text-amber-200/80">
+                        Browser frame or background session paused. Click below to instantly restart the engine and flush pending messages.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={waActionLoading}
+                    onClick={handleWaReconnect}
+                    className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs gap-1.5 shrink-0"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${waActionLoading ? 'animate-spin' : ''}`} />
+                    Auto-Fix & Flush Queue
+                  </Button>
+                </div>
+              )}
+
               {waQueue.length === 0 ? (
                 <div className="text-muted-foreground text-sm py-8 text-center border border-dashed border-white/10 rounded-lg">Queue is currently empty.</div>
               ) : (

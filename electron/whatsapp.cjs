@@ -3,6 +3,7 @@ const qrcode = require('qrcode-terminal');
 const { jsonStore } = require('./database.cjs');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 const { app } = require('electron');
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -160,6 +161,30 @@ function incrementHourlyPromo() {
     hourlyPromoCount++;
 }
 
+// ─── Browser Process & Client Cleanup ────────────────────────────────────────
+let restartTimer = null;
+
+async function destroyClientSafely() {
+    if (!client) return;
+    const oldClient = client;
+    client = null;
+    isClientReady = false;
+    try {
+        if (oldClient.pupBrowser) {
+            const proc = oldClient.pupBrowser.process();
+            if (proc && !proc.killed) {
+                setTimeout(() => {
+                    try { proc.kill('SIGKILL'); } catch (_) {}
+                }, 2000);
+            }
+        }
+        await Promise.race([
+            oldClient.destroy().catch(() => {}),
+            new Promise(res => setTimeout(res, 3000)),
+        ]);
+    } catch (_) {}
+}
+
 // ─── Build Client ─────────────────────────────────────────────────────────────
 function buildClient() {
     const authDataPath = path.join(app.getPath('userData'), '.wwebjs_auth');
@@ -176,13 +201,28 @@ function buildClient() {
             headless: true,
             executablePath: getBrowserExecutablePath() || undefined,
             args: [
-                '--no-sandbox', '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas',
-                '--no-first-run', '--no-zygote', '--disable-gpu',
-                '--disable-extensions', '--disable-background-timer-throttling',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-extensions',
+                '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
                 '--disable-renderer-backgrounding',
+                '--disable-features=CalculateNativeWinOcclusion,InterestCohort,Translate,IsolateOrigins,site-per-process',
+                '--disable-ipc-flooding-protection',
+                '--disable-hang-monitor',
+                '--disable-prompt-on-repost',
+                '--disable-sync',
+                '--disable-site-isolation-trials',
+                '--force-color-profile=srgb',
+                '--no-default-browser-check',
                 '--memory-pressure-off',
+                '--autoplay-policy=no-user-gesture-required',
+                '--disable-blink-features=AutomationControlled',
             ],
             timeout: 90000, // 90s browser launch timeout
         },
@@ -205,7 +245,7 @@ function startWhatsAppClient(ipcMain) {
             clientState = 'error';
             initError = `Browser launch failed: ${err.message}`;
             console.error('[WhatsApp] buildClient() threw:', err.message);
-            scheduleRestart(30000);
+            scheduleRestart(15000);
             return;
         }
 
@@ -217,14 +257,27 @@ function startWhatsAppClient(ipcMain) {
         });
 
         client.on('ready', async () => {
-            console.log('[WhatsApp] ✓ Client ready');
+            console.log('[WhatsApp] ✓ Client ready & connected');
             isClientReady = true;
             currentQR = null;
             initError = null;
             clientState = 'ready';
+            restartAttempts = 0;
 
             try {
                 if (client && client.pupPage) {
+                    client.pupPage.on('error', (err) => {
+                        console.warn('[WhatsApp] Puppeteer page error:', err.message);
+                        if (err.message.includes('detached Frame') || err.message.includes('Target closed') || err.message.includes('Session closed')) {
+                            isClientReady = false;
+                            clientState = 'disconnected';
+                            scheduleRestart(3000);
+                        }
+                    });
+                    client.pupPage.on('pageerror', (err) => {
+                        console.warn('[WhatsApp] Puppeteer page unhandled JS exception:', err.message);
+                    });
+
                     await client.pupPage.evaluate(() => {
                         try {
                             const MediaStorage = window.require && window.require('WAWebMediaStorage');
@@ -242,8 +295,15 @@ function startWhatsAppClient(ipcMain) {
                     });
                 }
             } catch (_) {}
-            restartAttempts = 0;
+
             startHealthHeartbeat();
+            
+            // Immediate queue sweep on ready
+            setTimeout(() => {
+                if (isClientReady && !isProcessingQueue) {
+                    console.log('[WhatsApp] Ready event triggered queue sweep.');
+                }
+            }, 1000);
         });
 
         client.on('authenticated', () => {
@@ -269,69 +329,72 @@ function startWhatsAppClient(ipcMain) {
             clientState = 'disconnected';
             initError = `Disconnected: ${reason}`;
             stopHealthHeartbeat();
-            scheduleRestart(10000);
+            scheduleRestart(5000);
         });
 
         client.initialize().catch((err) => {
             console.error('[WhatsApp] initialize() threw:', err.message);
+            isClientReady = false;
             clientState = 'error';
             initError = `Initialization failed: ${err.message}`;
             stopHealthHeartbeat();
-            scheduleRestart(30000);
+            scheduleRestart(15000);
         });
     }
 
-    // ── Health Heartbeat ─────────────────────────────────────────────────────
-    // Periodically checks if the client is truly alive even when marked ready.
-    // whatsapp-web.js can silently become unresponsive without firing 'disconnected'.
+    // ── Health Heartbeat & Frame Liveness ────────────────────────────────────
     function startHealthHeartbeat() {
         stopHealthHeartbeat();
         healthInterval = setInterval(async () => {
-            if (!isClientReady || !client) return;
+            if (!client) return;
             try {
                 const state = await Promise.race([
                     client.getState(),
                     new Promise((_, rej) => setTimeout(() => rej(new Error('HeartbeatTimeout')), 10000)),
                 ]);
                 if (state !== 'CONNECTED') {
-                    console.warn(`[WhatsApp] Heartbeat: unexpected state "${state}" — triggering restart.`);
+                    console.warn(`[WhatsApp] Heartbeat: unexpected state "${state}" — auto-reconnecting.`);
                     isClientReady = false;
                     clientState = 'disconnected';
-                    initError = `Connection stale (state: ${state}). Reconnecting…`;
+                    initError = `Connection stale (state: ${state}). Auto-reconnecting…`;
                     stopHealthHeartbeat();
-                    scheduleRestart(5000);
+                    scheduleRestart(3000);
                 }
             } catch (err) {
-                console.warn('[WhatsApp] Heartbeat failed:', err.message);
-                if (err.message === 'HeartbeatTimeout' || err.message.includes('Protocol error')) {
+                console.warn('[WhatsApp] Heartbeat check caught:', err.message);
+                const isDead = err.message === 'HeartbeatTimeout' ||
+                    err.message.includes('Protocol error') ||
+                    err.message.includes('detached Frame') ||
+                    err.message.includes('detached frame') ||
+                    err.message.includes('Execution context was destroyed') ||
+                    err.message.includes('Target closed') ||
+                    err.message.includes('Session closed');
+                if (isDead) {
                     isClientReady = false;
                     clientState = 'disconnected';
-                    initError = 'Connection stale (heartbeat timeout). Reconnecting…';
+                    initError = `Connection lost (${err.message.slice(0, 70)}). Auto-reconnecting…`;
                     stopHealthHeartbeat();
-                    scheduleRestart(5000);
+                    scheduleRestart(3000);
                 }
             }
-        }, 60000); // Check every 60 seconds
+        }, 30000); // Check every 30 seconds
     }
 
     function stopHealthHeartbeat() {
         if (healthInterval) { clearInterval(healthInterval); healthInterval = null; }
     }
 
-    // ── Auto Restart ─────────────────────────────────────────────────────────
+    // ── Continuous Self-Healing Auto Restart ──────────────────────────────────
     function scheduleRestart(delayMs) {
-        if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
-            console.error('[WhatsApp] Max restart attempts reached.');
-            clientState = 'error';
-            initError = 'Max reconnection attempts reached. Please restart the application manually.';
-            return;
-        }
-        // Exponential backoff: delay doubles each attempt, capped at 5 minutes
-        const backoff = Math.min(delayMs * Math.pow(1.5, restartAttempts), 300000);
+        if (restartTimer) clearTimeout(restartTimer);
+
+        // Exponential backoff capped at 45 seconds for continuous self-healing
+        const backoff = Math.min(delayMs * Math.pow(1.3, Math.min(restartAttempts, 6)), 45000);
         restartAttempts++;
-        console.log(`[WhatsApp] Restart in ${Math.round(backoff / 1000)}s (attempt ${restartAttempts}/${MAX_RESTART_ATTEMPTS})`);
-        setTimeout(() => {
-            try { if (client) { client.destroy().catch(() => {}); client = null; } } catch (_) {}
+        console.log(`[WhatsApp] Auto-recovery scheduled in ${Math.round(backoff / 1000)}s (attempt ${restartAttempts})`);
+        
+        restartTimer = setTimeout(async () => {
+            await destroyClientSafely();
             initClient();
         }, backoff);
     }
@@ -370,11 +433,12 @@ function startWhatsAppClient(ipcMain) {
     });
 
     // ── IPC: Manual Reconnect ────────────────────────────────────────────────
-    ipcMain.handle('whatsapp:reconnect', () => {
+    ipcMain.handle('whatsapp:reconnect', async () => {
         console.log('[WhatsApp] Manual reconnect requested.');
+        if (restartTimer) clearTimeout(restartTimer);
         restartAttempts = 0;
         stopHealthHeartbeat();
-        try { if (client) { client.destroy().catch(() => {}); client = null; } } catch (_) {}
+        await destroyClientSafely();
         setTimeout(() => initClient(), 500);
         return { success: true };
     });
@@ -382,17 +446,13 @@ function startWhatsAppClient(ipcMain) {
     // ── IPC: Manual Disconnect ───────────────────────────────────────────────
     ipcMain.handle('whatsapp:disconnect', async () => {
         console.log('[WhatsApp] Manual disconnect requested.');
+        if (restartTimer) clearTimeout(restartTimer);
         stopHealthHeartbeat();
         isClientReady = false;
         currentQR = null;
         clientState = 'disconnected';
         initError = 'Disconnected by operator';
-        try {
-            if (client) {
-                await client.destroy().catch(() => {});
-                client = null;
-            }
-        } catch (_) {}
+        await destroyClientSafely();
         return { success: true };
     });
 
@@ -529,9 +589,29 @@ function startWhatsAppClient(ipcMain) {
         }
 
         try {
-            // Step 1: Pre-send readiness check
+            // Step 1: Pre-send readiness check & live state verification
             if (!isClientReady || !client) {
                 console.warn('[WhatsApp] Queue worker encountered client unready — pausing worker execution.');
+                isProcessingQueue = false;
+                return;
+            }
+
+            // Verify live engine status before interacting with DOM/Frame
+            try {
+                const liveState = await Promise.race([
+                    client.getState(),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('LiveCheckTimeout')), 4000)),
+                ]);
+                if (liveState !== 'CONNECTED') {
+                    throw new Error(`Engine state is ${liveState}`);
+                }
+            } catch (stateErr) {
+                console.warn(`[WhatsApp] Pre-send check detected non-live engine: ${stateErr.message}. Initiating auto-recovery.`);
+                isClientReady = false;
+                clientState = 'disconnected';
+                initError = `Frame disconnected: ${stateErr.message}`;
+                stopHealthHeartbeat();
+                scheduleRestart(2000);
                 isProcessingQueue = false;
                 return;
             }
@@ -756,6 +836,10 @@ function startWhatsAppClient(ipcMain) {
 async function stopWhatsAppClient() {
     console.log('[WhatsApp] Stopping client gracefully...');
     isProcessingQueue = false;
+    if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = null;
+    }
     if (queueInterval) {
         clearInterval(queueInterval);
         queueInterval = null;
@@ -764,15 +848,7 @@ async function stopWhatsAppClient() {
         clearInterval(healthInterval);
         healthInterval = null;
     }
-    if (client) {
-        try {
-            await client.destroy();
-            console.log('[WhatsApp] Client destroyed successfully.');
-        } catch (err) {
-            console.error('[WhatsApp] Error destroying client:', err);
-        }
-        client = null;
-    }
+    await destroyClientSafely();
     isClientReady = false;
     clientState = 'disconnected';
 }
