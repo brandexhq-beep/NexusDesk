@@ -465,6 +465,60 @@ function setupIpcHandlers() {
   handleSafe('db:customers:getById',  (_, id)     => jsonStore.getById('customers', id));
   handleSafe('db:customers:add',      (_, item)   => jsonStore.add('customers', item));
   handleSafe('db:customers:update',   (_, id, d)  => jsonStore.update('customers', id, d));
+  handleSafe('db:customers:delete',   (_, id)     => jsonStore.delete('customers', id));
+  handleSafe('db:customers:mergeDuplicates', (_, { targetCustomerId, duplicateCustomerIds, mergedData }) => {
+    const mergeTx = db.transaction(() => {
+      // 1. Update target customer
+      jsonStore.update('customers', targetCustomerId, mergedData);
+
+      // 2. Re-link sessions
+      const sessions = jsonStore.getAll('sessions');
+      for (const s of sessions) {
+        if (duplicateCustomerIds.includes(s.customer_id)) {
+          jsonStore.update('sessions', s.id, { customer_id: targetCustomerId });
+        }
+      }
+
+      // 3. Re-link transactions
+      const transactions = jsonStore.getAll('transactions');
+      for (const t of transactions) {
+        if (duplicateCustomerIds.includes(t.customer_id)) {
+          jsonStore.update('transactions', t.id, { customer_id: targetCustomerId });
+        }
+      }
+
+      // 4. Re-link review requests
+      const reviewRequests = jsonStore.getAll('review_requests');
+      for (const r of reviewRequests) {
+        if (duplicateCustomerIds.includes(r.customer_id)) {
+          jsonStore.update('review_requests', r.id, { customer_id: targetCustomerId });
+        }
+      }
+
+      // 5. Delete duplicates
+      for (const dupId of duplicateCustomerIds) {
+        jsonStore.delete('customers', dupId);
+      }
+
+      // 6. Audit log
+      try {
+        const logId = crypto.randomUUID();
+        const logData = {
+          id: logId,
+          timestamp: Date.now(),
+          action: 'CUSTOMER_MERGE_DUPLICATES',
+          entity_type: 'customer',
+          entity_id: targetCustomerId,
+          details: `Merged ${duplicateCustomerIds.length} duplicate contact(s) into customer ID ${targetCustomerId}. Combined Points: ${mergedData.loyalty_points || 0}, Wallet: ₹${mergedData.wallet_balance || 0}`
+        };
+        db.prepare('INSERT INTO audit_logs (id, data) VALUES (?, ?)').run(logId, JSON.stringify(logData));
+      } catch (_) {}
+
+      return { success: true, count: duplicateCustomerIds.length };
+    });
+
+    return mergeTx();
+  });
 
   // SESSIONS (Atomic Transactional Start & Stop)
   handleSafe('db:sessions:getAll',    ()          => jsonStore.getAll('sessions'));

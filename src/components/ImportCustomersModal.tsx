@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { db } from '../services/db';
+import { getCanonicalPhoneKey, normalizePhoneDisplay } from '../lib/phone';
 // @ts-ignore
 import * as XLSX from 'xlsx';
 import { Upload, FileSpreadsheet, ShieldAlert } from 'lucide-react';
@@ -19,6 +20,7 @@ interface ParsedCustomerRow {
   rowNum: number;
   name: string;
   phone: string;
+  canonicalKey: string;
   available_minutes: number;
   wallet_balance: number;
   loyalty_points: number;
@@ -56,10 +58,10 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
 
       const rawData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
       const existingCustomers = await db.customers.getAll();
-      const existingPhones = new Set(
+      const existingCanonicalKeys = new Set(
         existingCustomers
-          .map(c => (c.phone || '').trim().replace(/\s+/g, ''))
-          .filter(Boolean)
+          .map(c => getCanonicalPhoneKey(c.phone))
+          .filter(k => Boolean(k) && k.length >= 5)
       );
 
       let missingPhoneCount = 0;
@@ -75,20 +77,19 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
         const pointsKey = Object.keys(row).find(k => /point|loyalty/i.test(k));
 
         const name = String(row[nameKey] || '').trim();
-        let rawPhone = phoneKey ? String(row[phoneKey] || '').trim() : '';
-        // Clean phone string
-        rawPhone = rawPhone.replace(/[^\d+]/g, '');
+        const rawPhone = phoneKey ? String(row[phoneKey] || '').trim() : '';
+        const canonicalKey = getCanonicalPhoneKey(rawPhone);
 
         const available_minutes = minsKey ? Math.max(0, parseInt(row[minsKey], 10) || 0) : 0;
         const wallet_balance = walletKey ? Math.max(0, parseFloat(row[walletKey]) || 0) : 0;
         const loyalty_points = pointsKey ? Math.max(0, parseInt(row[pointsKey], 10) || 0) : 0;
 
-        const isMissingPhone = !rawPhone;
-        const isDbDuplicate = existingPhones.has(rawPhone);
-        const isFileDuplicate = filePhoneSet.has(rawPhone) && rawPhone !== '';
+        const isMissingPhone = !canonicalKey;
+        const isDbDuplicate = canonicalKey ? existingCanonicalKeys.has(canonicalKey) : false;
+        const isFileDuplicate = canonicalKey ? filePhoneSet.has(canonicalKey) : false;
         const isDuplicate = isDbDuplicate || isFileDuplicate;
 
-        if (rawPhone) filePhoneSet.add(rawPhone);
+        if (canonicalKey) filePhoneSet.add(canonicalKey);
 
         if (isMissingPhone) missingPhoneCount++;
         if (isDuplicate) duplicateCount++;
@@ -103,7 +104,8 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
         return {
           rowNum: index + 2, // Accounting for header row
           name: name || 'Unnamed Customer',
-          phone: rawPhone,
+          phone: rawPhone ? normalizePhoneDisplay(rawPhone) : '',
+          canonicalKey,
           available_minutes,
           wallet_balance,
           loyalty_points,
@@ -120,25 +122,37 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
         duplicates: duplicateCount,
         missingPhone: missingPhoneCount
       });
-    } catch (err) {
-      console.error('Error parsing Excel file:', err);
+    } catch (e) {
+      console.error('File parsing error:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleToggleSkipPhone = async (checked: boolean) => {
+  const handleToggleSkipPhone = (checked: boolean) => {
     setSkipMissingPhone(checked);
-    if (file) {
-      await processFile(file, checked, handleDuplicateAction);
-    }
+    const updated = parsedRows.map(r => {
+      let action = r.action;
+      if (r.isMissingPhone) {
+        action = checked ? 'skip' : 'import';
+      }
+      return { ...r, action };
+    });
+    setParsedRows(updated);
+    setStats(prev => ({ ...prev, valid: updated.filter(r => r.action !== 'skip').length }));
   };
 
-  const handleToggleDuplicateAction = async (action: 'update' | 'skip') => {
-    setHandleDuplicateAction(action);
-    if (file) {
-      await processFile(file, skipMissingPhone, action);
-    }
+  const handleToggleDuplicateAction = (actionType: 'update' | 'skip') => {
+    setHandleDuplicateAction(actionType);
+    const updated = parsedRows.map(r => {
+      let action = r.action;
+      if (r.isDuplicate && !r.isMissingPhone) {
+        action = actionType === 'update' ? 'update' : 'skip';
+      }
+      return { ...r, action };
+    });
+    setParsedRows(updated);
+    setStats(prev => ({ ...prev, valid: updated.filter(r => r.action !== 'skip').length }));
   };
 
   const handleConfirmImport = async () => {
@@ -150,7 +164,7 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
       const existingMap = new Map(
         existingCustomers
           .filter(c => !!c.phone)
-          .map(c => [c.phone.trim(), c])
+          .map(c => [getCanonicalPhoneKey(c.phone), c])
       );
 
       let imported = 0;
@@ -159,20 +173,20 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
       for (const r of parsedRows) {
         if (r.action === 'skip') continue;
 
-        const existing = r.phone ? existingMap.get(r.phone.trim()) : null;
+        const existing = r.canonicalKey ? existingMap.get(r.canonicalKey) : null;
 
         if (existing && r.action === 'update') {
           await db.customers.update(existing.id, {
             name: r.name || existing.name,
-            available_minutes: existing.available_minutes + r.available_minutes,
-            wallet_balance: existing.wallet_balance + r.wallet_balance,
-            loyalty_points: existing.loyalty_points + r.loyalty_points
+            available_minutes: (existing.available_minutes || 0) + r.available_minutes,
+            wallet_balance: (existing.wallet_balance || 0) + r.wallet_balance,
+            loyalty_points: (existing.loyalty_points || 0) + r.loyalty_points
           });
           updated++;
-        } else if (!existing && (r.phone || !skipMissingPhone)) {
+        } else if (!existing && r.action === 'import') {
           await db.customers.add({
             name: r.name,
-            phone: r.phone || 'N/A',
+            phone: r.phone,
             available_minutes: r.available_minutes,
             wallet_balance: r.wallet_balance,
             loyalty_points: r.loyalty_points
@@ -183,39 +197,32 @@ export function ImportCustomersModal({ open, onClose, onImportSuccess }: ImportC
 
       onImportSuccess();
       onClose();
-      resetForm();
-    } catch (err) {
-      console.error('Failed to import customers:', err);
+    } catch (e) {
+      console.error('Import execution error:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setFile(null);
-    setParsedRows([]);
-    setStats({ total: 0, valid: 0, duplicates: 0, missingPhone: 0 });
-  };
-
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { resetForm(); onClose(); } }}>
-      <DialogContent className="bg-card text-card-foreground border-border max-w-3xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader className="border-b border-white/10 pb-3">
-          <DialogTitle className="text-xl font-bold flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-            Import Customers from Excel / CSV
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="bg-card text-card-foreground border-border max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+            <FileSpreadsheet className="w-5 h-5 text-indigo-400" />
+            Bulk Import Customers
           </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">
-            Bulk upload customer data from Excel (.xlsx, .xls) or CSV files with smart deduplication and field mapping.
+          <DialogDescription className="text-muted-foreground text-xs">
+            Upload an Excel (.xlsx, .xls) or CSV sheet of customer contacts. Canonical phone numbers will automatically match and deduplicate safely.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* File Upload Drop Zone */}
-          <div className="border-2 border-dashed border-white/10 hover:border-indigo-500/50 rounded-xl p-6 text-center bg-black/20 transition-all">
-            <Upload className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-foreground">
-              {file ? file.name : 'Select Excel (.xlsx, .xls) or CSV file to import'}
+        <div className="space-y-4 py-2 overflow-y-auto flex-1">
+          {/* File Upload Area */}
+          <div className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-indigo-500/50 transition-colors bg-black/20">
+            <Upload className="w-8 h-8 mx-auto text-indigo-400 mb-2" />
+            <p className="text-sm font-medium text-foreground">
+              {file ? file.name : 'Choose an Excel or CSV file to import'}
             </p>
             <p className="text-xs text-muted-foreground mt-1">Supported columns: Name, Phone, Wallet Balance, Time Minutes, Loyalty Points</p>
 

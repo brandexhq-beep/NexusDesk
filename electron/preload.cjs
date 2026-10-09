@@ -10,10 +10,12 @@ contextBridge.exposeInMainWorld('api', {
       bulkAssignCategory: (stationIds, categoryId) => ipcRenderer.invoke('db:stations:bulkAssignCategory', { stationIds, categoryId }),
     },
     customers: {
-      getAll:   ()          => ipcRenderer.invoke('db:customers:getAll'),
-      getById:  (id)        => ipcRenderer.invoke('db:customers:getById', id),
-      add:      (customer)  => ipcRenderer.invoke('db:customers:add', customer),
-      update:   (id, data)  => ipcRenderer.invoke('db:customers:update', id, data),
+      getAll:          ()                => ipcRenderer.invoke('db:customers:getAll'),
+      getById:         (id)              => ipcRenderer.invoke('db:customers:getById', id),
+      add:             (customer)        => ipcRenderer.invoke('db:customers:add', customer),
+      update:          (id, data)        => ipcRenderer.invoke('db:customers:update', id, data),
+      delete:          (id)              => ipcRenderer.invoke('db:customers:delete', id),
+      mergeDuplicates: (payload)         => ipcRenderer.invoke('db:customers:mergeDuplicates', payload),
     },
     sessions: {
       getAll:              ()            => ipcRenderer.invoke('db:sessions:getAll'),

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '../services/db';
 import type { Customer, Station, Session, Game } from '../types';
-import { Search, Calendar, History, Gamepad2, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { Search, Calendar, History, Gamepad2, FileSpreadsheet, RefreshCw, Banknote, QrCode, Wallet, Split } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
 import { fuzzySearch } from '../lib/search';
 import { SessionDetailsModal } from '../components/SessionDetailsModal';
@@ -20,7 +20,7 @@ export function Reports() {
   
   const [topCustomers, setTopCustomers] = useState<Customer[]>([]);
   const [revenueData, setRevenueData] = useState<any[]>([]);
-  const [utilizationData, setUtilizationData] = useState<any[]>([]);
+  const [paymentBreakdownData, setPaymentBreakdownData] = useState<any[]>([]);
   const [popularGames, setPopularGames] = useState<any[]>([]);
   const [currency, setCurrency] = useState('₹');
   const [cafeName, setCafeName] = useState('Gaming Cafe');
@@ -30,10 +30,14 @@ export function Reports() {
   const [startDateStr, setStartDateStr] = useState<string>('');
   const [endDateStr, setEndDateStr] = useState<string>('');
   const [selectedStationFilter, setSelectedStationFilter] = useState<string>('all');
+  const [selectedPaymentFilter, setSelectedPaymentFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Metrics
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [cashRevenue, setCashRevenue] = useState(0);
+  const [upiRevenue, setUpiRevenue] = useState(0);
+  const [walletRevenue, setWalletRevenue] = useState(0);
   const [gamingRevenue, setGamingRevenue] = useState(0);
   const [foodRevenue, setFoodRevenue] = useState(0);
   const [totalExpenses, setTotalExpenses] = useState(0);
@@ -123,18 +127,31 @@ export function Reports() {
       filtered = filtered.filter(s => s.station_id === selectedStationFilter);
     }
 
+    if (selectedPaymentFilter !== 'all') {
+      filtered = filtered.filter(s => {
+        const mode = s.payment_mode || 'cash';
+        if (selectedPaymentFilter === 'cash') return mode === 'cash' || Boolean(s.cash_amount && s.cash_amount > 0);
+        if (selectedPaymentFilter === 'upi') return mode === 'upi' || Boolean(s.upi_amount && s.upi_amount > 0);
+        if (selectedPaymentFilter === 'wallet') return mode === 'wallet' || Boolean(s.wallet_amount && s.wallet_amount > 0);
+        if (selectedPaymentFilter === 'mixed') return mode === 'mixed';
+        return true;
+      });
+    }
+
     let totRev = 0;
+    let totCash = 0;
+    let totUpi = 0;
+    let totWallet = 0;
     let gamRev = 0;
     let fdRev = 0;
     let count = 0;
 
     const gameCounts: Record<string, number> = {};
-    const hourCounts = Array(24).fill(0);
 
     const formatDateKey = (d: Date) => 
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-    const dateMap: Record<string, { gaming: number; food: number }> = {};
+    const dateMap: Record<string, { gaming: number; food: number; cash: number; upi: number }> = {};
 
     filtered.forEach(s => {
       if (s.status === 'completed') {
@@ -142,37 +159,61 @@ export function Reports() {
         const amt = s.total_amount || 0;
         totRev += amt;
 
+        // Separate cash and upi amounts
+        let cAmt = 0;
+        let uAmt = 0;
+        let wAmt = 0;
+
+        if (s.cash_amount !== undefined || s.upi_amount !== undefined || s.wallet_amount !== undefined) {
+          cAmt = s.cash_amount || 0;
+          uAmt = s.upi_amount || 0;
+          wAmt = s.wallet_amount || 0;
+        } else if (s.payment_mode === 'upi') {
+          uAmt = amt;
+        } else if (s.payment_mode === 'wallet') {
+          wAmt = amt;
+        } else {
+          cAmt = amt;
+        }
+
+        totCash += cAmt;
+        totUpi += uAmt;
+        totWallet += wAmt;
+
         const foodCost = s.orders ? s.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0) : 0;
         const gCost = Math.max(0, amt - foodCost);
 
         fdRev += foodCost;
         gamRev += gCost;
 
-        const sDate = new Date(Number(s.end_time || s.start_time));
+        const sDate = new Date(s.end_time ? Number(s.end_time) : Number(s.start_time));
         const dKey = formatDateKey(sDate);
-        if (!dateMap[dKey]) dateMap[dKey] = { gaming: 0, food: 0 };
+
+        if (!dateMap[dKey]) {
+          dateMap[dKey] = { gaming: 0, food: 0, cash: 0, upi: 0 };
+        }
         dateMap[dKey].gaming += gCost;
         dateMap[dKey].food += foodCost;
-      }
+        dateMap[dKey].cash += cAmt;
+        dateMap[dKey].upi += uAmt;
 
-      if (s.game_ids) {
-        s.game_ids.forEach(id => {
-          gameCounts[id] = (gameCounts[id] || 0) + 1;
-        });
-      }
-
-      if (s.start_time) {
-        const hour = new Date(Number(s.start_time)).getHours();
-        hourCounts[hour]++;
+        if (s.game_ids && Array.isArray(s.game_ids)) {
+          s.game_ids.forEach(id => {
+            gameCounts[id] = (gameCounts[id] || 0) + 1;
+          });
+        }
       }
     });
 
     setTotalRevenue(totRev);
+    setCashRevenue(totCash);
+    setUpiRevenue(totUpi);
+    setWalletRevenue(totWallet);
     setGamingRevenue(gamRev);
     setFoodRevenue(fdRev);
     setSessionCount(count);
 
-    // Build chart data
+    // Build timeline chart data
     const chartData = Object.entries(dateMap).map(([dKey, val]) => {
       const d = new Date(dKey);
       const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -181,11 +222,20 @@ export function Reports() {
         dateKey: dKey,
         gaming: val.gaming,
         food: val.food,
+        cash: val.cash,
+        upi: val.upi,
         total: val.gaming + val.food
       };
     }).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 
     setRevenueData(chartData);
+
+    // Build payment breakdown chart data
+    setPaymentBreakdownData([
+      { name: 'Cash', value: totCash, color: '#10b981' },
+      { name: 'UPI / Online', value: totUpi, color: '#6366f1' },
+      { name: 'Wallet', value: totWallet, color: '#a855f7' }
+    ].filter(item => item.value > 0));
 
     const popular = Object.entries(gameCounts)
       .map(([id, c]) => {
@@ -194,105 +244,110 @@ export function Reports() {
       })
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
+
     setPopularGames(popular);
 
-    const utilization = hourCounts.map((c, i) => {
-      const ampm = i >= 12 ? 'pm' : 'am';
-      const hour12 = i % 12 || 12;
-      return { time: `${hour12}${ampm}`, sessions: c };
-    }).filter(d => d.sessions > 0 || (parseInt(d.time) >= 10 && parseInt(d.time) <= 22));
-    setUtilizationData(utilization);
+    // Calculate total expenses in date range
+    const filteredExpenses = expensesList.filter(e => {
+      const eTime = Number(e.timestamp);
+      return eTime >= startMs && eTime <= endMs;
+    });
+    const expTotal = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    setTotalExpenses(expTotal);
 
-    // Calculate expenses for date range
-    const totalExp = (expensesList || []).reduce((acc, e) => {
-      const t = Number(e.timestamp);
-      return (t >= startMs && t <= endMs) ? acc + e.amount : acc;
-    }, 0);
-    setTotalExpenses(totalExp);
+  }, [sessions, dateFilterType, startDateStr, endDateStr, selectedStationFilter, selectedPaymentFilter, games, expensesList]);
 
-  }, [sessions, dateFilterType, startDateStr, endDateStr, selectedStationFilter, games, expensesList]);
-
-  // Station name resolver
-  const getStationName = (st_id: string) => {
-    const found = stations.find(s => s.id === st_id);
-    return found ? found.name : `Station ${st_id}`;
-  };
-
-  // Customer name resolver
-  const getCustomerName = (cust_id: string | null) => {
-    if (!cust_id) return 'Walk-in Customer';
-    const found = customers.find(c => c.id === cust_id);
-    if (!found) return 'Walk-in Customer';
-    return found.phone ? `${found.name} (${found.phone})` : found.name;
-  };
-
-  const getGameNames = (game_ids?: string[]) => {
-    if (!game_ids || game_ids.length === 0) return 'None';
-    return game_ids.map(id => games.find(g => g.id === id)?.name || id).join(', ');
-  };
-
-  // Filter session logs with Fuzzy Search
-  const { startMs, endMs } = getDateRange();
-  const rawFilteredSessions = sessions.filter(s => {
+  // Filter sessions table
+  const { startMs: rangeStart, endMs: rangeEnd } = getDateRange();
+  const dateFilteredSessions: Session[] = sessions.filter(s => {
     const sTime = s.end_time ? Number(s.end_time) : Number(s.start_time);
-    const timeMatch = sTime >= startMs && sTime <= endMs;
-    const stationMatch = selectedStationFilter === 'all' || s.station_id === selectedStationFilter;
-    return timeMatch && stationMatch;
-  }).sort((a, b) => Number(b.start_time) - Number(a.start_time));
+    const inRange = sTime >= rangeStart && sTime <= rangeEnd;
+    const matchStation = selectedStationFilter === 'all' || s.station_id === selectedStationFilter;
+    const mode = s.payment_mode || 'cash';
+    let matchPayment = true;
+    if (selectedPaymentFilter === 'cash') matchPayment = mode === 'cash' || Boolean(s.cash_amount && s.cash_amount > 0);
+    if (selectedPaymentFilter === 'upi') matchPayment = mode === 'upi' || Boolean(s.upi_amount && s.upi_amount > 0);
+    if (selectedPaymentFilter === 'wallet') matchPayment = mode === 'wallet' || Boolean(s.wallet_amount && s.wallet_amount > 0);
+    if (selectedPaymentFilter === 'mixed') matchPayment = mode === 'mixed';
+    return inRange && matchStation && matchPayment;
+  });
 
-  const searchedSessions = fuzzySearch(rawFilteredSessions, searchQuery, (s) => [
-    getCustomerName(s.customer_id),
-    getStationName(s.station_id),
-    getGameNames(s.game_ids),
-    s.payment_mode,
-    s.total_amount
-  ]);
+  const searchedSessions: Session[] = searchQuery.trim() === ''
+    ? dateFilteredSessions
+    : fuzzySearch(dateFilteredSessions, searchQuery, (s: Session) => {
+        const cust = customers.find(c => c.id === s.customer_id);
+        const stn = stations.find(st => st.id === s.station_id);
+        const gNames = (s.game_ids || []).map(gid => games.find(g => g.id === gid)?.name || '').join(' ');
+        return [cust?.name, cust?.phone, stn?.name, gNames, s.payment_mode];
+      });
 
-  // Comprehensive CSV Export
+  const getStationName = (id?: string | null) => stations.find(s => s.id === id)?.name || 'Unknown Station';
+  const getCustomerName = (id?: string | null) => customers.find(c => c.id === id)?.name || 'Walk-in Customer';
+  const getGameNames = (ids?: string[] | null) => {
+    if (!ids || ids.length === 0) return 'None';
+    return ids.map(id => games.find(g => g.id === id)?.name || 'Unknown').join(', ');
+  };
+
   const handleExportCustomCSV = () => {
-    const { startMs, endMs } = getDateRange();
-    const startStr = new Date(startMs).toLocaleDateString();
-    const endStr = new Date(endMs).toLocaleDateString();
-    const rangeTitle = `${dateFilterType.toUpperCase()} (${startStr} to ${endStr})`;
+    let rangeTitle = dateFilterType.toUpperCase();
+    if (dateFilterType === 'custom') {
+      rangeTitle = `${startDateStr} to ${endDateStr}`;
+    }
 
     const headers = [
       'Session ID',
       'Date',
       'Start Time',
       'End Time',
-      'Station',
-      'Customer',
-      'Players',
-      'Games Played',
       'Duration (Mins)',
+      'Station Name',
+      'Customer Name',
+      'Customer Phone',
+      'Games Played',
+      'Number of Players',
       'Gaming Amount',
       'Food Amount',
       'Total Amount',
       'Payment Mode',
+      'Cash Amount',
+      'UPI Amount',
+      'Wallet Amount',
       'Status'
     ];
 
-    const rows = searchedSessions.map(s => {
-      const start = new Date(Number(s.start_time));
-      const end = s.end_time ? new Date(Number(s.end_time)) : null;
-      const durationMins = end ? Math.round((end.getTime() - start.getTime()) / 60000) : 0;
-      const foodAmt = s.orders ? s.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0) : 0;
-      const gamingAmt = Math.max(0, (s.total_amount || 0) - foodAmt);
+    const rows = searchedSessions.map((s: Session) => {
+      const startD = new Date(s.start_time);
+      const endD = s.end_time ? new Date(s.end_time) : new Date();
+      const mins = Math.max(1, Math.round((endD.getTime() - startD.getTime()) / 60000));
+      const cust = customers.find(c => c.id === s.customer_id);
+      const stn = stations.find(st => st.id === s.station_id);
+      const gNames = (s.game_ids || []).map(gid => games.find(g => g.id === gid)?.name || 'Unknown').join('; ');
+      
+      const foodAmt = s.orders ? s.orders.reduce((sum: number, o: any) => sum + (o.price_at_order * o.quantity), 0) : 0;
+      const gameAmt = Math.max(0, (s.total_amount || 0) - foodAmt);
+
+      const cAmt = s.cash_amount !== undefined ? s.cash_amount : (s.payment_mode === 'cash' || !s.payment_mode ? (s.total_amount || 0) : 0);
+      const uAmt = s.upi_amount !== undefined ? s.upi_amount : (s.payment_mode === 'upi' ? (s.total_amount || 0) : 0);
+      const wAmt = s.wallet_amount !== undefined ? s.wallet_amount : (s.payment_mode === 'wallet' ? (s.total_amount || 0) : 0);
 
       return [
         s.id,
-        start.toLocaleDateString(),
-        start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A',
-        getStationName(s.station_id),
-        getCustomerName(s.customer_id),
+        startD.toLocaleDateString(),
+        startD.toLocaleTimeString(),
+        endD.toLocaleTimeString(),
+        mins,
+        stn?.name || 'Unknown',
+        cust?.name || 'Walk-in',
+        cust?.phone || 'N/A',
+        gNames,
         s.num_players || 1,
-        getGameNames(s.game_ids),
-        durationMins,
-        `${currency} ${gamingAmt.toFixed(2)}`,
-        `${currency} ${foodAmt.toFixed(2)}`,
-        `${currency} ${(s.total_amount || 0).toFixed(2)}`,
-        s.payment_mode || 'N/A',
+        gameAmt.toFixed(2),
+        foodAmt.toFixed(2),
+        (s.total_amount || 0).toFixed(2),
+        (s.payment_mode || 'cash').toUpperCase(),
+        cAmt.toFixed(2),
+        uAmt.toFixed(2),
+        wAmt.toFixed(2),
         s.status
       ];
     });
@@ -303,6 +358,9 @@ export function Reports() {
       dateRangeStr: rangeTitle,
       summaryMetrics: [
         { label: 'Total Gross Revenue', value: `${currency} ${totalRevenue.toFixed(2)}` },
+        { label: 'Cash Collected', value: `${currency} ${cashRevenue.toFixed(2)}` },
+        { label: 'UPI / Online Collected', value: `${currency} ${upiRevenue.toFixed(2)}` },
+        { label: 'Wallet Redeemed', value: `${currency} ${walletRevenue.toFixed(2)}` },
         { label: 'Gaming Revenue', value: `${currency} ${gamingRevenue.toFixed(2)}` },
         { label: 'Food & Snacks Revenue', value: `${currency} ${foodRevenue.toFixed(2)}` },
         { label: 'Total Logged Expenses', value: `${currency} ${totalExpenses.toFixed(2)}` },
@@ -315,12 +373,16 @@ export function Reports() {
     });
   };
 
+  const cashPercent = totalRevenue > 0 ? Math.round((cashRevenue / totalRevenue) * 100) : 0;
+  const upiPercent = totalRevenue > 0 ? Math.round((upiRevenue / totalRevenue) * 100) : 0;
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Analytics & Station Reports</h1>
-          <p className="text-xs text-muted-foreground mt-1">Detailed revenue, station play history, game metrics, and financial breakdown.</p>
+          <p className="text-xs text-muted-foreground mt-1">Detailed revenue, Cash vs UPI breakdown, station play history, and financial audit.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={loadAllData} className="border-border text-xs gap-1.5">
@@ -332,127 +394,142 @@ export function Reports() {
         </div>
       </div>
 
-      {/* Date & Station Filter Bar */}
-      <Card className="bg-card border-border p-4">
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-indigo-400" /> Filter Period:
-            </span>
-
-            <div className="flex bg-black/40 border border-white/10 rounded-lg p-1 gap-1">
-              <button
-                onClick={() => setDateFilterType('today')}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
-                  dateFilterType === 'today' ? 'bg-indigo-600 text-white font-bold' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setDateFilterType('yesterday')}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
-                  dateFilterType === 'yesterday' ? 'bg-indigo-600 text-white font-bold' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Yesterday
-              </button>
-              <button
-                onClick={() => setDateFilterType('week')}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
-                  dateFilterType === 'week' ? 'bg-indigo-600 text-white font-bold' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                This Week
-              </button>
-              <button
-                onClick={() => setDateFilterType('month')}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
-                  dateFilterType === 'month' ? 'bg-indigo-600 text-white font-bold' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                This Month
-              </button>
-              <button
-                onClick={() => setDateFilterType('custom')}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-all ${
-                  dateFilterType === 'custom' ? 'bg-indigo-600 text-white font-bold' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Custom Range
-              </button>
-            </div>
-          </div>
-
-          {dateFilterType === 'custom' && (
+      {/* Filter Toolbar */}
+      <Card className="bg-card border-border">
+        <CardContent className="p-4 flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                value={startDateStr}
-                onChange={(e) => setStartDateStr(e.target.value)}
-                className="w-36 h-8 text-xs border-border bg-background"
-              />
-              <span className="text-xs text-muted-foreground">to</span>
-              <Input
-                type="date"
-                value={endDateStr}
-                onChange={(e) => setEndDateStr(e.target.value)}
-                className="w-36 h-8 text-xs border-border bg-background"
-              />
+              <Calendar className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Date Range:</span>
             </div>
-          )}
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground uppercase shrink-0">Station Filter:</span>
-            <Select value={selectedStationFilter} onValueChange={setSelectedStationFilter}>
-              <SelectTrigger className="w-48 h-8 text-xs border-border bg-background">
-                <SelectValue placeholder="All Stations" />
+            <Select value={dateFilterType} onValueChange={(val: any) => setDateFilterType(val)}>
+              <SelectTrigger className="w-36 h-8 text-xs border-border bg-background">
+                <SelectValue placeholder="Period" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Stations</SelectItem>
-                {stations.map(st => (
-                  <SelectItem key={st.id} value={st.id}>{st.name} ({st.type})</SelectItem>
-                ))}
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="yesterday">Yesterday</SelectItem>
+                <SelectItem value="week">Past 7 Days</SelectItem>
+                <SelectItem value="month">This Month</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
               </SelectContent>
             </Select>
+
+            {dateFilterType === 'custom' && (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={startDateStr}
+                  onChange={(e) => setStartDateStr(e.target.value)}
+                  className="h-8 text-xs border-border bg-background w-32"
+                />
+                <span className="text-xs text-muted-foreground">to</span>
+                <Input
+                  type="date"
+                  value={endDateStr}
+                  onChange={(e) => setEndDateStr(e.target.value)}
+                  className="h-8 text-xs border-border bg-background w-32"
+                />
+              </div>
+            )}
           </div>
-        </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Station Filter */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Station:</span>
+              <Select value={selectedStationFilter} onValueChange={setSelectedStationFilter}>
+                <SelectTrigger className="w-40 h-8 text-xs border-border bg-background">
+                  <SelectValue placeholder="All Stations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Stations</SelectItem>
+                  {stations.map(st => (
+                    <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Payment Filter */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Payment:</span>
+              <Select value={selectedPaymentFilter} onValueChange={setSelectedPaymentFilter}>
+                <SelectTrigger className="w-36 h-8 text-xs border-border bg-background">
+                  <SelectValue placeholder="All Modes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Modes</SelectItem>
+                  <SelectItem value="cash">Cash Only</SelectItem>
+                  <SelectItem value="upi">UPI Only</SelectItem>
+                  <SelectItem value="wallet">Wallet Only</SelectItem>
+                  <SelectItem value="mixed">Split / Mixed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
       </Card>
 
-      {/* KPI Cards */}
+      {/* KPI Cards: Revenue, Cash, UPI, Net Profit */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Gross Revenue */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Revenue</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-black text-foreground">{currency} {totalRevenue.toLocaleString()}</div>
-            <p className="text-[11px] text-emerald-400 mt-1">{sessionCount} completed sessions</p>
+            <p className="text-[11px] text-indigo-400 mt-1">{sessionCount} completed sessions</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Gaming Time Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-black text-indigo-400">{currency} {gamingRevenue.toLocaleString()}</div>
-            <p className="text-[11px] text-muted-foreground mt-1">Console, PC & Table charges</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Food & Drinks Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-black text-emerald-400">{currency} {foodRevenue.toLocaleString()}</div>
-            <p className="text-[11px] text-muted-foreground mt-1">Snacks, Beverages & Combos</p>
-          </CardContent>
-        </Card>
-
+        {/* Cash Collected */}
         <Card className="bg-card border-border relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent pointer-events-none" />
+          <div className="absolute top-0 right-0 p-3 opacity-10">
+            <Banknote className="w-16 h-16 text-emerald-400" />
+          </div>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Banknote className="w-3.5 h-3.5" /> Cash Collected
+              </CardTitle>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                {cashPercent}%
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-black text-emerald-400">{currency} {cashRevenue.toLocaleString()}</div>
+            <p className="text-[11px] text-muted-foreground mt-1">Physical cash payments</p>
+          </CardContent>
+        </Card>
+
+        {/* UPI / Online Collected */}
+        <Card className="bg-card border-border relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-3 opacity-10">
+            <QrCode className="w-16 h-16 text-indigo-400" />
+          </div>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
+                <QrCode className="w-3.5 h-3.5" /> UPI / Online
+              </CardTitle>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                {upiPercent}%
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-black text-indigo-400">{currency} {upiRevenue.toLocaleString()}</div>
+            <p className="text-[11px] text-muted-foreground mt-1">GPay, PhonePe, Paytm, QR</p>
+          </CardContent>
+        </Card>
+
+        {/* Net Profit */}
+        <Card className="bg-card border-border relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent pointer-events-none" />
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Net Profit</CardTitle>
           </CardHeader>
@@ -465,11 +542,39 @@ export function Reports() {
         </Card>
       </div>
 
+      {/* Secondary Sub-metrics: Gaming, Food, Wallet */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-3.5 rounded-lg bg-card border border-border flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-muted-foreground">Gaming Time Revenue</div>
+            <div className="text-lg font-bold text-foreground mt-0.5">{currency} {gamingRevenue.toLocaleString()}</div>
+          </div>
+          <Gamepad2 className="w-6 h-6 text-indigo-400 opacity-60" />
+        </div>
+
+        <div className="p-3.5 rounded-lg bg-card border border-border flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-muted-foreground">Food & Drinks Revenue</div>
+            <div className="text-lg font-bold text-foreground mt-0.5">{currency} {foodRevenue.toLocaleString()}</div>
+          </div>
+          <span className="text-xl opacity-60">🍿</span>
+        </div>
+
+        <div className="p-3.5 rounded-lg bg-card border border-border flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase font-semibold text-muted-foreground">Customer Wallet Used</div>
+            <div className="text-lg font-bold text-purple-400 mt-0.5">{currency} {walletRevenue.toLocaleString()}</div>
+          </div>
+          <Wallet className="w-6 h-6 text-purple-400 opacity-60" />
+        </div>
+      </div>
+
       {/* Analytics Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-card border-border">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Revenue Timeline */}
+        <Card className="bg-card border-border lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-card-foreground text-base">Revenue Breakdown Timeline</CardTitle>
+            <CardTitle className="text-card-foreground text-base">Revenue & Payment Timeline</CardTitle>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -481,49 +586,66 @@ export function Reports() {
                   contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px' }} />
-                <Bar dataKey="gaming" stackId="a" fill="#8b5cf6" name="Gaming" />
-                <Bar dataKey="food" stackId="a" fill="#10b981" name="Food" />
+                <Bar dataKey="cash" fill="#10b981" name="Cash" />
+                <Bar dataKey="upi" fill="#6366f1" name="UPI" />
+                <Bar dataKey="food" fill="#f59e0b" name="Food/Snacks" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
+        {/* Payment Mode Ratio */}
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-card-foreground text-base">Peak Operational Hours</CardTitle>
+            <CardTitle className="text-card-foreground text-base">Payment Ratio (Cash vs UPI)</CardTitle>
           </CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={utilizationData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#888" fontSize={11} />
-                <YAxis stroke="#888" allowDecimals={false} fontSize={11} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
-                />
-                <Bar dataKey="sessions" fill="#ec4899" name="Sessions Started" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent className="h-72 flex flex-col items-center justify-center">
+            {paymentBreakdownData.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No payments recorded in period</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={paymentBreakdownData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {paymentBreakdownData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(val: any) => [`${currency} ${Number(val || 0).toLocaleString()}`, 'Amount']}
+                    contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px', color: '#fff' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Station Play History & Accidental Close Billing Recovery Log */}
+      {/* Station Play History & Billing Log */}
       <Card className="bg-card border-border">
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <CardTitle className="text-card-foreground flex items-center gap-2">
               <History className="w-5 h-5 text-indigo-400" /> Station Play History & Billing Log ({searchedSessions.length})
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Inspect who played on each station. If a session was accidentally closed, click "View Bill" to re-examine or print invoice.
+              Inspect each station session, exact Cash vs UPI split, customer details, and invoice history.
             </p>
           </div>
 
           <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Fuzzy search player, station, games..."
+              placeholder="Fuzzy search player, station, games, payment..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 border-border bg-background/50 text-xs"
@@ -533,7 +655,7 @@ export function Reports() {
 
         <CardContent className="overflow-x-auto">
           {searchedSessions.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">No session play history matches the current date/station filters.</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">No session play history matches the current date/station/payment filters.</div>
           ) : (
             <Table>
               <TableHeader>
@@ -544,15 +666,19 @@ export function Reports() {
                   <TableHead className="text-muted-foreground">Games Played</TableHead>
                   <TableHead className="text-muted-foreground text-center">Players</TableHead>
                   <TableHead className="text-muted-foreground text-right">Bill Amount</TableHead>
-                  <TableHead className="text-muted-foreground">Payment</TableHead>
+                  <TableHead className="text-muted-foreground">Payment Mode & Breakdown</TableHead>
                   <TableHead className="text-muted-foreground text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {searchedSessions.map(s => {
+                {searchedSessions.map((s: Session) => {
                   const startMs = new Date(s.start_time).getTime();
                   const endMs = s.end_time ? new Date(s.end_time).getTime() : Date.now();
-                  const durationMins = Math.max(1, Math.round((endMs - startMs) / 60000));
+                  const durationMins = Math.max(1, Math.round((new Date(endMs).getTime() - startMs) / 60000));
+
+                  const totalAmt = s.total_amount || s.base_amount || 0;
+                  const cAmt = s.cash_amount !== undefined ? s.cash_amount : (s.payment_mode === 'cash' || !s.payment_mode ? totalAmt : 0);
+                  const uAmt = s.upi_amount !== undefined ? s.upi_amount : (s.payment_mode === 'upi' ? totalAmt : 0);
 
                   return (
                     <TableRow key={s.id} className="border-border hover:bg-white/5 text-xs">
@@ -578,12 +704,31 @@ export function Reports() {
                         {s.num_players || 1}P
                       </TableCell>
                       <TableCell className="text-right font-mono font-bold text-emerald-400 text-sm">
-                        {currency} {(s.total_amount || s.base_amount || 0).toFixed(2)}
+                        {currency} {totalAmt.toFixed(2)}
                       </TableCell>
-                      <TableCell className="capitalize text-muted-foreground">
-                        <span className="px-2 py-0.5 rounded text-[10px] bg-white/5 border border-white/10 font-mono">
-                          {s.payment_mode || 'cash'}
-                        </span>
+                      <TableCell>
+                        {s.payment_mode === 'mixed' ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/10 border border-amber-500/20 text-amber-300 font-semibold w-fit flex items-center gap-1">
+                              <Split className="w-3 h-3" /> Split Payment
+                            </span>
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              {currency}{cAmt} Cash + {currency}{uAmt} UPI
+                            </span>
+                          </div>
+                        ) : s.payment_mode === 'upi' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-semibold font-mono inline-flex items-center gap-1">
+                            <QrCode className="w-3 h-3" /> UPI ({currency}{totalAmt.toFixed(2)})
+                          </span>
+                        ) : s.payment_mode === 'wallet' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-purple-500/10 border border-purple-500/20 text-purple-300 font-semibold font-mono inline-flex items-center gap-1">
+                            <Wallet className="w-3 h-3" /> Wallet ({currency}{totalAmt.toFixed(2)})
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-semibold font-mono inline-flex items-center gap-1">
+                            <Banknote className="w-3 h-3" /> Cash ({currency}{totalAmt.toFixed(2)})
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -662,7 +807,7 @@ export function Reports() {
 
       <SessionDetailsModal
         session={selectedSession}
-        station={stations.find(st => st.id === selectedSession?.station_id)}
+        station={stations.find(st => st.id === (selectedSession ? selectedSession.station_id : ''))}
         onClose={() => setSelectedSession(null)}
       />
     </div>

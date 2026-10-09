@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { Session, Station, AppSettings } from '../types';
 import QRCode from 'qrcode';
+import type { Session, Station, AppSettings } from '../types';
 
 export interface InvoiceData {
   customerName: string;
@@ -46,20 +46,22 @@ export const generateInvoicePDF = async (
   doc.text(`Phone: ${invoiceData.customerPhone}`, 5, 40);
   doc.text(`Station: ${station.name}`, 5, 45);
   
-  const currencyStr = settings.currency_symbol === '₹' ? 'Rs.' : settings.currency_symbol;
+  const currencyStr = settings.currency_symbol === '₹' ? 'Rs.' : (settings.currency_symbol || 'Rs.');
 
   // Itemize bill
   const tableData: string[][] = [];
   
-  // Base cost (includes extended time and dynamic pricing, calculated in StopSessionModal)
-  if (session.base_amount > 0) {
+  // Base cost
+  if (session.base_amount && session.base_amount > 0) {
     tableData.push([`Gaming Time (${invoiceData.gameMinutes || '?'} mins)`, '1', `${currencyStr} ${session.base_amount.toFixed(2)}`]);
   }
   
   // Food orders
-  session.orders.forEach(order => {
-    tableData.push([order.name, order.quantity.toString(), `${currencyStr} ${(order.price_at_order * order.quantity).toFixed(2)}`]);
-  });
+  if (session.orders && session.orders.length > 0) {
+    session.orders.forEach(order => {
+      tableData.push([order.name, order.quantity.toString(), `${currencyStr} ${(order.price_at_order * order.quantity).toFixed(2)}`]);
+    });
+  }
   
   if (invoiceData.loyaltyDiscount > 0) {
     tableData.push([`Loyalty Discount (${invoiceData.pointsRedeemed} pts)`, '1', `- ${currencyStr} ${invoiceData.loyaltyDiscount.toFixed(2)}`]);
@@ -91,32 +93,47 @@ export const generateInvoicePDF = async (
   doc.setFontSize(12);
   doc.text('Total:', 5, finalY + 8);
   doc.text(`${currencyStr} ${session.total_amount.toFixed(2)}`, 75, finalY + 8, { align: 'right' });
+
+  // Payment Breakdown
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  let paymentText = `Paid via: ${(session.payment_mode || 'cash').toUpperCase()}`;
+  if (session.payment_mode === 'mixed') {
+    paymentText = `Split: ${currencyStr}${session.cash_amount || 0} Cash + ${currencyStr}${session.upi_amount || 0} UPI`;
+  } else if (session.payment_mode === 'cash') {
+    paymentText = `Paid via: Cash (${currencyStr}${session.total_amount.toFixed(2)})`;
+  } else if (session.payment_mode === 'upi') {
+    paymentText = `Paid via: UPI / Online (${currencyStr}${session.total_amount.toFixed(2)})`;
+  } else if (session.payment_mode === 'wallet') {
+    paymentText = `Paid via: Customer Wallet (${currencyStr}${session.total_amount.toFixed(2)})`;
+  }
+  doc.text(paymentText, 5, finalY + 13);
   
   if (invoiceData.pointsEarned > 0 && settings.loyalty_enabled !== false) {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(`+ ${invoiceData.pointsEarned} Loyalty Pts!`, 40, finalY + 16, { align: 'center' });
+    doc.text(`+ ${invoiceData.pointsEarned} Loyalty Pts!`, 40, finalY + 20, { align: 'center' });
     
     if (settings.loyalty_expiry_enabled) {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'italic');
       doc.setTextColor(100, 100, 100);
-      doc.text(`(Expires in ${settings.loyalty_expiry_days || 30} days)`, 40, finalY + 20, { align: 'center' });
-      doc.setTextColor(0, 0, 0); // reset
-      finalY += 24;
+      doc.text(`(Expires in ${settings.loyalty_expiry_days || 30} days)`, 40, finalY + 24, { align: 'center' });
+      doc.setTextColor(0, 0, 0);
+      finalY += 28;
     } else {
-      finalY += 20;
+      finalY += 24;
     }
   } else {
-    finalY += 10;
+    finalY += 16;
   }
   
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(9);
-  const footerMsg = settings.invoice_footer_msg || 'Thank you!';
-  doc.text(footerMsg, 40, finalY + 22, { align: 'center' });
+  const footerMsg = settings.invoice_footer_msg || 'Thank you for gaming with us!';
+  doc.text(footerMsg, 40, finalY + 6, { align: 'center' });
 
-  let currentY = finalY + 28;
+  let currentY = finalY + 12;
 
   if (settings.invoice_qr_type && settings.invoice_qr_type !== 'none') {
     try {
@@ -128,9 +145,7 @@ export const generateInvoicePDF = async (
       }
 
       if (qrValue) {
-        // Generate QR code as Base64 data URL
         const qrBase64 = await QRCode.toDataURL(qrValue, { errorCorrectionLevel: 'M', margin: 1 });
-        // Centered QR Code: 80mm wide page. x = 25, width = 30
         doc.addImage(qrBase64, 'PNG', 25, currentY, 30, 30);
         currentY += 32;
         
@@ -162,19 +177,19 @@ export const generateInvoiceText = (
 
   const lines: string[] = [];
   lines.push(`🎮 *${cafeName} - Tax Invoice*`);
-  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`─────────────────────────────`);
   lines.push(`👤 *Customer:* ${invoiceData.customerName}`);
-  lines.push(`🎯 *Station:* ${station.name}`);
+  lines.push(`🕹️ *Station:* ${station.name}`);
   if (session.num_players) {
     lines.push(`👥 *Players:* ${session.num_players}`);
   }
   if (invoiceData.gameMinutes) {
     lines.push(`⏱️ *Duration:* ${invoiceData.gameMinutes} mins`);
   }
-  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`─────────────────────────────`);
   lines.push(`*ITEMS & CHARGES:*`);
   
-  if (session.base_amount > 0) {
+  if (session.base_amount && session.base_amount > 0) {
     lines.push(`• Gaming Time (${invoiceData.gameMinutes || '?'} mins): ${currencyStr}${session.base_amount.toFixed(2)}`);
   }
   if (session.orders && session.orders.length > 0) {
@@ -192,20 +207,29 @@ export const generateInvoiceText = (
     lines.push(`• Custom Discount: -${currencyStr}${invoiceData.customDiscount.toFixed(2)}`);
   }
 
-  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`─────────────────────────────`);
   lines.push(`💰 *TOTAL AMOUNT: ${currencyStr}${session.total_amount.toFixed(2)}*`);
-  if (session.payment_mode) {
-    lines.push(`💳 *Payment Mode:* ${session.payment_mode.toUpperCase()}`);
+  
+  if (session.payment_mode === 'mixed') {
+    lines.push(`💳 *Payment:* SPLIT (${currencyStr}${session.cash_amount || 0} Cash + ${currencyStr}${session.upi_amount || 0} UPI)`);
+  } else if (session.payment_mode === 'cash') {
+    lines.push(`💵 *Payment:* CASH (${currencyStr}${session.total_amount.toFixed(2)})`);
+  } else if (session.payment_mode === 'upi') {
+    lines.push(`📱 *Payment:* UPI / ONLINE (${currencyStr}${session.total_amount.toFixed(2)})`);
+  } else if (session.payment_mode === 'wallet') {
+    lines.push(`👛 *Payment:* WALLET (${currencyStr}${session.total_amount.toFixed(2)})`);
+  } else if (session.payment_mode) {
+    lines.push(`💳 *Payment:* ${session.payment_mode.toUpperCase()}`);
   }
+
   if (invoiceData.pointsEarned > 0 && settings.loyalty_enabled !== false) {
     lines.push(`⭐ *Loyalty Points Earned:* +${invoiceData.pointsEarned} pts`);
   }
-  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`─────────────────────────────`);
   lines.push(settings.invoice_footer_msg || 'Thank you for playing with us!');
   if (googleReviewLink) {
-    lines.push(`\n⭐ *Leave us a review:* ${googleReviewLink}`);
+    lines.push(`\n🌟 *Leave us a review:* ${googleReviewLink}`);
   }
 
   return lines.join('\n');
 };
-

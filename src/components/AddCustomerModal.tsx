@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
 import { isValidIndianPhone, formatIndianPhone } from '../lib/utils';
+import { getCanonicalPhoneKey, normalizePhoneDisplay } from '../lib/phone';
 import { toast } from 'sonner';
 
 interface AddCustomerModalProps {
@@ -30,6 +31,16 @@ export function AddCustomerModal({ open, onClose, onAdd }: AddCustomerModalProps
 
     setLoading(true);
     try {
+      const allCustomers = await db.customers.getAll();
+      const newKey = getCanonicalPhoneKey(phone);
+      const existing = allCustomers.find(c => getCanonicalPhoneKey(c.phone) === newKey);
+
+      if (existing) {
+        toast.error(`A customer with phone ${normalizePhoneDisplay(existing.phone)} already exists ("${existing.name}"). Avoid creating duplicates.`);
+        setLoading(false);
+        return;
+      }
+
       await db.customers.add({
         name: name.trim(),
         phone: formatIndianPhone(phone),

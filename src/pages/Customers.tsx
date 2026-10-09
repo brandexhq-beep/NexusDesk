@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { UserPlus, Phone, WalletCards, Download, Search, FileSpreadsheet } from 'lucide-react';
+import { UserPlus, Phone, WalletCards, Download, Search, FileSpreadsheet, Users } from 'lucide-react';
 import { AddCustomerModal } from '../components/AddCustomerModal';
 import { AddBalanceModal } from '../components/AddBalanceModal';
 import { CustomerProfileModal } from '../components/CustomerProfileModal';
 import { ImportCustomersModal } from '../components/ImportCustomersModal';
+import { MergeDuplicatesModal } from '../components/MergeDuplicatesModal';
+import { findDuplicateCustomerGroups } from '../lib/phone';
 import { fuzzySearch } from '../lib/search';
 
 export function Customers() {
@@ -20,6 +22,10 @@ export function Customers() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [addBalanceCustomer, setAddBalanceCustomer] = useState<Customer | null>(null);
   const [viewProfileCustomer, setViewProfileCustomer] = useState<Customer | null>(null);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+
+  const duplicateGroups = findDuplicateCustomerGroups(customers);
+  const duplicateCount = duplicateGroups.length;
 
   useEffect(() => {
     loadCustomers();
@@ -72,6 +78,22 @@ export function Customers() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Customers</h1>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <Button
+            onClick={() => setIsMergeModalOpen(true)}
+            variant="outline"
+            className={`flex-1 sm:flex-none gap-2 ${
+              duplicateCount > 0
+                ? 'border-amber-500/40 bg-amber-950/20 text-amber-300 hover:bg-amber-500/20 shadow-sm'
+                : 'border-border text-muted-foreground'
+            }`}
+          >
+            <Users className="w-4 h-4 text-amber-400" /> Merge Duplicates
+            {duplicateCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-bold">
+                {duplicateCount}
+              </span>
+            )}
+          </Button>
           <Button onClick={() => setIsImportModalOpen(true)} variant="outline" className="flex-1 sm:flex-none border-emerald-500/30 bg-emerald-950/10 text-emerald-400 hover:bg-emerald-500/20 gap-2">
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Import Excel
           </Button>
@@ -97,56 +119,68 @@ export function Customers() {
             />
           </div>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          {filteredCustomers.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No matching customers found.</div>
-          ) : (
+        <CardContent>
+          <div className="rounded-md border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
                   <TableHead className="text-muted-foreground">Name</TableHead>
                   <TableHead className="text-muted-foreground">Phone</TableHead>
                   <TableHead className="text-muted-foreground text-right">Time Balance</TableHead>
-                  <TableHead className="text-muted-foreground text-right">Wallet</TableHead>
-                  <TableHead className="text-muted-foreground text-right">Loyalty Pts</TableHead>
+                  <TableHead className="text-muted-foreground text-right">Wallet Balance</TableHead>
+                  <TableHead className="text-muted-foreground text-right">Loyalty Points</TableHead>
                   <TableHead className="text-muted-foreground text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCustomers.map((c) => (
-                  <TableRow 
-                    key={c.id} 
-                    className="border-border hover:bg-muted/50 cursor-pointer"
-                    onClick={() => setViewProfileCustomer(c)}
-                  >
-                    <TableCell className="font-medium text-foreground">{c.name}</TableCell>
-                    <TableCell>
-                      {c.phone ? (
-                        <a href={`tel:${c.phone}`} className="inline-flex items-center gap-2 text-primary hover:underline">
-                          <Phone className="w-3 h-3" /> {c.phone}
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground text-xs font-mono">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-indigo-400 font-medium">{formatMinutes(c.available_minutes)}</TableCell>
-                    <TableCell className="text-right text-emerald-500 font-medium">{currency} {c.wallet_balance || 0}</TableCell>
-                    <TableCell className="text-right font-medium text-amber-500">{c.loyalty_points}</TableCell>
-                    <TableCell className="text-right">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={(e) => { e.stopPropagation(); setAddBalanceCustomer(c); }} 
-                        className="text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 gap-2"
-                      >
-                        <WalletCards className="w-4 h-4" /> Add Balance
-                      </Button>
+                {filteredCustomers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      No customers found
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredCustomers.map((c) => (
+                    <TableRow key={c.id} className="border-border hover:bg-muted/50 transition-colors">
+                      <TableCell className="font-medium text-foreground">{c.name}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {c.phone ? (
+                          <div className="flex items-center gap-1">
+                            <Phone className="w-3.5 h-3.5" />
+                            {c.phone}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/50">No phone</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-indigo-400 font-medium">{formatMinutes(c.available_minutes)}</TableCell>
+                      <TableCell className="text-right text-emerald-500 font-medium">{currency} {c.wallet_balance || 0}</TableCell>
+                      <TableCell className="text-right font-medium text-amber-500">{c.loyalty_points}</TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => setViewProfileCustomer(c)}
+                          className="mr-2 hover:bg-muted text-xs"
+                        >
+                          View Profile
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => setAddBalanceCustomer(c)}
+                          className="hover:bg-muted text-xs"
+                        >
+                          <WalletCards className="w-3.5 h-3.5 mr-1" />
+                          Add Balance
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
-          )}
+          </div>
         </CardContent>
       </Card>
 
@@ -162,15 +196,25 @@ export function Customers() {
         onImportSuccess={loadCustomers}
       />
 
-      <AddBalanceModal
-        customer={addBalanceCustomer}
-        onClose={() => setAddBalanceCustomer(null)}
-        onAdd={loadCustomers}
+      <MergeDuplicatesModal
+        open={isMergeModalOpen}
+        onClose={() => setIsMergeModalOpen(false)}
+        onMerged={loadCustomers}
+        customers={customers}
+      />
+
+      <AddBalanceModal 
+        customer={addBalanceCustomer} 
+        onClose={() => setAddBalanceCustomer(null)} 
+        onAdd={loadCustomers} 
       />
 
       <CustomerProfileModal
         customer={viewProfileCustomer}
-        onClose={() => setViewProfileCustomer(null)}
+        onClose={() => {
+          setViewProfileCustomer(null);
+          loadCustomers();
+        }}
       />
     </div>
   );

@@ -67,7 +67,7 @@ export interface Customer {
   created_at: number | Date; // Depending on Firestore timestamp vs JS Date
 }
 
-export type PaymentMode = 'wallet' | 'cash' | 'mixed';
+export type PaymentMode = 'cash' | 'upi' | 'wallet' | 'mixed' | 'card';
 
 export type SessionStatus = 'active' | 'completed';
 
@@ -104,6 +104,14 @@ export interface Session {
   food_amount: number;
   total_amount: number;
   payment_mode: PaymentMode | null;
+  cash_amount?: number;
+  upi_amount?: number;
+  wallet_amount?: number;
+  split_breakdown?: {
+    cash?: number;
+    upi?: number;
+    wallet?: number;
+  };
   status: SessionStatus;
   extended_minutes?: number;
   warning_sent?: boolean;

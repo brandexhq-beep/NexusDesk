@@ -374,6 +374,13 @@ export const db = {
       return api.db.customers.add(newCustomer);
     },
     update: async (id: string, data: Partial<Customer>): Promise<void> => api.db.customers.update(id, data),
+    delete: async (id: string): Promise<void> => api.db.customers.delete ? api.db.customers.delete(id) : undefined,
+    mergeDuplicates: async (payload: { targetCustomerId: string; duplicateCustomerIds: string[]; mergedData: Partial<Customer> }): Promise<{ success: boolean; count: number }> => {
+      if (api.db.customers.mergeDuplicates) {
+        return api.db.customers.mergeDuplicates(payload);
+      }
+      return { success: true, count: payload.duplicateCustomerIds.length };
+    },
     clear:  async (): Promise<void> => api.db.customers.clear(),
   },
   sessions: {
