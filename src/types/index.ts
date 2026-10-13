@@ -1,4 +1,4 @@
-﻿export type StationType = 'ps5' | 'ps5_vr' | 'ps5_simracing' | 'snooker' | 'pc' | string;
+export type StationType = 'ps5' | 'ps5_vr' | 'ps5_simracing' | 'snooker' | 'pc' | string;
 
 export interface Game {
   id: string;
@@ -18,7 +18,7 @@ export interface ReviewRequest {
   created_at: number;
 }
 
-export type StationStatus = 'free' | 'occupied' | 'maintenance';
+export type StationStatus = 'free' | 'occupied' | 'maintenance' | 'paused';
 
 export interface PricingCategory {
   id: string;
@@ -119,6 +119,10 @@ export interface Session {
   game_ids?: string[];
   num_players?: number;
   pricing_snapshot?: PricingSnapshot;
+  is_paused?: boolean;
+  paused_at?: number | null;
+  total_paused_ms?: number;
+  checkout_paused?: boolean;
 }
 
 export type MenuCategory = 'snack' | 'drink' | 'combo' | 'package';

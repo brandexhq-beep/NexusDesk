@@ -8,9 +8,10 @@ interface SessionDetailsModalProps {
   session: Session | null;
   station: Station | undefined;
   onClose: () => void;
+  onEditPayment?: (session: Session) => void;
 }
 
-export function SessionDetailsModal({ session, station, onClose }: SessionDetailsModalProps) {
+export function SessionDetailsModal({ session, station, onClose, onEditPayment }: SessionDetailsModalProps) {
   const [games, setGames] = useState<Game[]>([]);
 
   useEffect(() => {
@@ -69,14 +70,37 @@ export function SessionDetailsModal({ session, station, onClose }: SessionDetail
             </div>
           )}
 
+          <div className="flex justify-between items-center border-b border-border pb-2 text-xs">
+            <span className="text-muted-foreground">Payment Mode</span>
+            <span className="font-semibold uppercase tracking-wider text-indigo-300">
+              {session.payment_mode === 'mixed'
+                ? `Split (₹${session.cash_amount || 0} Cash + ₹${session.upi_amount || 0} UPI)`
+                : session.payment_mode || 'Cash'}
+            </span>
+          </div>
+
           <div className="flex justify-between text-lg font-bold pt-2 text-emerald-400">
             <span>Total Billed</span>
             <span>₹ {session.total_amount?.toFixed(2)}</span>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button onClick={onClose} variant="outline" className="w-full">Close</Button>
+        <DialogFooter className="gap-2 sm:gap-0">
+          {onEditPayment && (
+            <Button
+              onClick={() => {
+                onClose();
+                onEditPayment(session);
+              }}
+              variant="outline"
+              className="border-amber-500/30 text-amber-300 hover:bg-amber-500/10 text-xs"
+            >
+              Change Payment Mode
+            </Button>
+          )}
+          <Button onClick={onClose} variant="outline" className={onEditPayment ? "text-xs" : "w-full text-xs"}>
+            Close
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

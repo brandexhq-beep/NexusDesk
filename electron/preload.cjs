@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('api', {
     transactions: {
       getAll:   ()          => ipcRenderer.invoke('db:transactions:getAll'),
       add:      (tx)        => ipcRenderer.invoke('db:transactions:add', tx),
+      update:   (id, data)  => ipcRenderer.invoke('db:transactions:update', id, data),
     },
     settings: {
       get:      ()          => ipcRenderer.invoke('db:settings:get'),

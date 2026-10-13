@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { db } from '../services/db';
 import type { Customer, Session, Station } from '../types';
 import { SessionDetailsModal } from './SessionDetailsModal';
+import { EditPaymentModal } from './EditPaymentModal';
 import { isValidIndianPhone, formatIndianPhone } from '../lib/utils';
 import { toast } from 'sonner';
 
@@ -19,6 +20,7 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
   const [currency, setCurrency] = useState('₹');
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [editPaymentSession, setEditPaymentSession] = useState<Session | null>(null);
 
   const [isEditingPhone, setIsEditingPhone] = useState(false);
   const [editPhone, setEditPhone] = useState('');
@@ -181,6 +183,18 @@ export function CustomerProfileModal({ customer, onClose }: CustomerProfileModal
         session={selectedSession} 
         station={stations.find(st => st.id === selectedSession?.station_id)}
         onClose={() => setSelectedSession(null)} 
+        onEditPayment={(s) => setEditPaymentSession(s)}
+      />
+      <EditPaymentModal
+        session={editPaymentSession}
+        open={!!editPaymentSession}
+        onClose={() => setEditPaymentSession(null)}
+        onUpdated={async () => {
+          if (customer) {
+            const all = await db.sessions.getAll();
+            setSessions(all.filter(s => s.customer_id === customer.id && s.status === 'completed').reverse());
+          }
+        }}
       />
     </Dialog>
   );

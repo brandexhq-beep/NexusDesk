@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -16,10 +16,12 @@ interface StopSessionModalProps {
   session: Session | null;
   rules: PricingRule[];
   onClose: () => void;
-  onStop: () => void;
+  onStop: (completedSession?: Session) => void;
+  stopTime?: number;
 }
 
-export function StopSessionModal({ station, session, rules, onClose, onStop }: StopSessionModalProps) {
+export function StopSessionModal({ station, session, rules, onClose, onStop, stopTime }: StopSessionModalProps) {
+  const isCompletedRef = useRef(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
   const [splitCash, setSplitCash] = useState<string>('0');
@@ -34,6 +36,10 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   const [sendInvoice, setSendInvoice] = useState(false);
   const [manualGameCost, setManualGameCost] = useState<string>('');
   const [isManualOverride, setIsManualOverride] = useState(false);
+
+  useEffect(() => {
+    isCompletedRef.current = false;
+  }, [session?.id]);
 
   useEffect(() => {
     db.settings.get().then(s => {
@@ -63,9 +69,14 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
       }
 
       // Calculate final bill with resolved customer data
-      const now = Date.now();
+      const freezeTime = stopTime || (session.is_paused && session.paused_at ? session.paused_at : Date.now());
+      const totalPausedMs = (session.total_paused_ms || 0) + (session.is_paused && session.paused_at ? Math.max(0, freezeTime - session.paused_at) : 0);
       let calculatedGameCost = 0;
       let usedMins = 0;
+
+      const totalElapsedMs = Math.max(0, freezeTime - Number(session.start_time));
+      const effectivePlayedMs = Math.max(0, totalElapsedMs - totalPausedMs);
+      const effectiveEndTime = Number(session.start_time) + effectivePlayedMs;
 
       if (session.combo_id) {
         calculatedGameCost = session.base_amount || 0;
@@ -74,7 +85,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         const prepaidMinutes = session.prepaid_duration_mins || 0;
         const totalFreeMinutes = customerFreeMinutes + prepaidMinutes;
         
-        const res = calculateDynamicCost(Number(session.start_time), now, station, rules, totalFreeMinutes, session.num_players, session.pricing_snapshot);
+        const res = calculateDynamicCost(Number(session.start_time), effectiveEndTime, station, rules, totalFreeMinutes, session.num_players, session.pricing_snapshot);
         calculatedGameCost = (session.base_amount || 0) + res.cost;
         usedMins = Math.max(0, Math.min(customerFreeMinutes, res.minutesUsed - prepaidMinutes));
       }
@@ -86,7 +97,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
 
       setMinutesUsed(usedMins);
       const foodCost = session.orders.reduce((sum, o) => sum + (o.price_at_order * o.quantity), 0);
-      const totalMins = Math.ceil((now - Number(session.start_time)) / 60000);
+      const totalMins = Math.ceil(effectivePlayedMs / 60000);
 
       const effectiveGameCost = isManualOverride && manualGameCost !== '' ? Number(manualGameCost) || 0 : calculatedGameCost;
       if (!isManualOverride) {
@@ -104,7 +115,7 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
     };
 
     init();
-  }, [session, station, rules, isManualOverride, manualGameCost]);
+  }, [session, station, rules, isManualOverride, manualGameCost, stopTime]);
 
   useEffect(() => {
     const ptsDiscount = pointsToRedeem / conversionRate;
@@ -200,10 +211,15 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         }
       }
 
+      const freezeEnd = stopTime || (session.is_paused && session.paused_at ? session.paused_at : Date.now());
+
       // 1. Update session
       await db.sessions.update(session.id, {
         status: 'completed',
-        end_time: Date.now(),
+        end_time: freezeEnd,
+        is_paused: false,
+        paused_at: null,
+        checkout_paused: false,
         total_amount: bill.total,
         base_amount: bill.gameTime,
         food_amount: bill.food,
@@ -301,9 +317,30 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
         }
       }
 
+      const completedSessionData: Session = {
+        ...session,
+        status: 'completed',
+        end_time: freezeEnd,
+        is_paused: false,
+        paused_at: null,
+        checkout_paused: false,
+        total_amount: bill.total,
+        base_amount: bill.gameTime,
+        food_amount: bill.food,
+        payment_mode: paymentMode,
+        cash_amount: finalCash,
+        upi_amount: finalUpi,
+        wallet_amount: finalWallet,
+        split_breakdown: {
+          cash: finalCash,
+          upi: finalUpi,
+          wallet: finalWallet
+        }
+      };
+
+      isCompletedRef.current = true;
       toast.success('Session completed successfully!');
-      onStop();
-      onClose();
+      onStop(completedSessionData);
     } catch (e) {
       console.error(e);
       toast.error('Failed to complete checkout');
@@ -313,11 +350,16 @@ export function StopSessionModal({ station, session, rules, onClose, onStop }: S
   };
 
   const startDate = session?.start_time ? new Date(session.start_time) : new Date();
-  const endDate = new Date();
+  const freezeEndMs = stopTime || (session?.is_paused && session?.paused_at ? session.paused_at : Date.now());
+  const endDate = new Date(freezeEndMs);
   const currencyStr = settings?.currency_symbol || '₹';
 
   return (
-    <Dialog open={!!session} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={!!session} onOpenChange={(open) => {
+      if (!open && !isCompletedRef.current) {
+        onClose();
+      }
+    }}>
       <DialogContent className="bg-card text-card-foreground border-border max-w-4xl p-0 overflow-hidden flex flex-col md:flex-row h-[92vh] max-h-[750px]">
         {/* Left Side: Checkout Form */}
         <div className="flex-1 flex flex-col h-full border-r border-border overflow-y-auto">

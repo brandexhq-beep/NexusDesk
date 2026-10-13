@@ -24,12 +24,21 @@ interface QueueItem {
   retryCount?: number;
 }
 
-function ElapsedTimer({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(Math.floor((Date.now() - startedAt) / 1000));
+function ElapsedTimer({ startedAt }: { startedAt?: number | null }) {
+  const calcElapsed = () => {
+    if (!startedAt || isNaN(startedAt) || startedAt <= 0) return 0;
+    return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  };
+  const [elapsed, setElapsed] = useState(calcElapsed);
   useEffect(() => {
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    setElapsed(calcElapsed());
+    const t = setInterval(() => setElapsed(calcElapsed()), 1000);
     return () => clearInterval(t);
   }, [startedAt]);
+
+  if (!startedAt || isNaN(startedAt) || startedAt <= 0) {
+    return <span>0s</span>;
+  }
   const m = Math.floor(elapsed / 60);
   const s = elapsed % 60;
   return <span>{m > 0 ? `${m}m ` : ''}{s}s</span>;

@@ -426,11 +426,15 @@ function initDatabase() {
     const activeStationIds = new Set(activeSessions.map(s => s.station_id));
 
     for (const st of allStations) {
-      if (activeStationIds.has(st.id) && st.status !== 'occupied') {
-        console.log(`[Reconciliation] Station "${st.name}" has active session but was marked "${st.status}". Repairing → "occupied".`);
-        jsonStore.update('stations', st.id, { status: 'occupied' });
-      } else if (!activeStationIds.has(st.id) && st.status === 'occupied') {
-        console.log(`[Reconciliation] Station "${st.name}" marked "occupied" but has no active session. Repairing → "free".`);
+      const activeSession = activeSessions.find(s => s.station_id === st.id);
+      if (activeSession) {
+        const targetStatus = activeSession.is_paused ? 'paused' : 'occupied';
+        if (st.status !== targetStatus) {
+          console.log(`[Reconciliation] Station "${st.name}" has active session (paused: ${Boolean(activeSession.is_paused)}). Repairing → "${targetStatus}".`);
+          jsonStore.update('stations', st.id, { status: targetStatus });
+        }
+      } else if (st.status === 'occupied' || st.status === 'paused') {
+        console.log(`[Reconciliation] Station "${st.name}" marked "${st.status}" but has no active session. Repairing → "free".`);
         jsonStore.update('stations', st.id, { status: 'free' });
       }
     }
@@ -553,6 +557,7 @@ function setupIpcHandlers() {
   // TRANSACTIONS
   handleSafe('db:transactions:getAll',()          => jsonStore.getAll('transactions'));
   handleSafe('db:transactions:add',   (_, item)   => jsonStore.add('transactions', item));
+  handleSafe('db:transactions:update',(_, id, d)  => jsonStore.update('transactions', id, d));
 
   // SETTINGS
   handleSafe('db:settings:get', () => {

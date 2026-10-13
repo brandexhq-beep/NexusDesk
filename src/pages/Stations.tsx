@@ -208,6 +208,7 @@ export function Stations() {
               {catStations.map((s) => {
                 const isFree = s.status === 'free';
                 const isOccupied = s.status === 'occupied';
+                const isPaused = s.status === 'paused';
                 const isMaintenance = s.status === 'maintenance';
 
                 const installedCount = (s.installed_games || []).length;
@@ -219,6 +220,7 @@ export function Stations() {
                     className={`bg-black/40 backdrop-blur-md transition-all duration-300 relative overflow-hidden group ${
                       isFree ? 'border-cyan-500/20 hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/10' :
                       isOccupied ? 'border-fuchsia-500/30 shadow-md shadow-fuchsia-500/10' :
+                      isPaused ? 'border-amber-500/40 shadow-md shadow-amber-500/10' :
                       'border-slate-500/20 opacity-70'
                     }`}
                   >
@@ -226,6 +228,7 @@ export function Stations() {
                     <div className={`absolute top-0 left-0 w-full h-1 ${
                       isFree ? 'bg-cyan-500' :
                       isOccupied ? 'bg-fuchsia-500' :
+                      isPaused ? 'bg-amber-500' :
                       'bg-slate-500'
                     }`} />
 
@@ -255,6 +258,7 @@ export function Stations() {
                           <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-widest ${
                             isFree ? 'bg-cyan-500/10 text-cyan-400' :
                             isOccupied ? 'bg-fuchsia-500/10 text-fuchsia-400 animate-pulse' :
+                            isPaused ? 'bg-amber-500/10 text-amber-400 font-bold border border-amber-500/30' :
                             'bg-slate-500/20 text-slate-400'
                           }`}>
                             {s.status}

@@ -385,6 +385,11 @@ export const db = {
   },
   sessions: {
     getAll:              async (): Promise<Session[]>                      => api.db.sessions.getAll(),
+    getById:             async (id: string): Promise<Session | undefined>  => {
+      if (api.db.sessions.getById) return api.db.sessions.getById(id);
+      const all = await api.db.sessions.getAll();
+      return all.find((s: Session) => s.id === id);
+    },
     getActiveByStation:  async (stationId: string): Promise<Session | undefined> => api.db.sessions.getActiveByStation(stationId),
     add:                 async (session: Omit<Session, 'id'>): Promise<Session>  => {
       const newSession = { ...session, id: crypto.randomUUID() };
@@ -413,6 +418,7 @@ export const db = {
       };
       return api.db.transactions.add(newTransaction);
     },
+    update: async (id: string, data: Partial<Transaction>): Promise<void> => api.db.transactions.update(id, data),
   },
   settings: {
     get:    async (): Promise<AppSettings>               => api.db.settings.get(),

@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { db } from '../services/db';
 import type { Customer, Station, Session, Game } from '../types';
-import { Search, Calendar, History, Gamepad2, FileSpreadsheet, RefreshCw, Banknote, QrCode, Wallet, Split } from 'lucide-react';
+import { Search, Calendar, History, Gamepad2, FileSpreadsheet, RefreshCw, Banknote, QrCode, Wallet, Split, CreditCard } from 'lucide-react';
 import { exportToCSV } from '../lib/csvExport';
 import { fuzzySearch } from '../lib/search';
 import { SessionDetailsModal } from '../components/SessionDetailsModal';
+import { EditPaymentModal } from '../components/EditPaymentModal';
 
 export function Reports() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -45,6 +46,7 @@ export function Reports() {
 
   // Selected session details modal
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [editPaymentSession, setEditPaymentSession] = useState<Session | null>(null);
 
   const [expensesList, setExpensesList] = useState<any[]>([]);
 
@@ -731,14 +733,25 @@ export function Reports() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setSelectedSession(s)}
-                          className="h-7 text-[11px] text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10"
-                        >
-                          View Bill
-                        </Button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditPaymentSession(s)}
+                            className="h-7 px-2 text-[11px] border-amber-500/30 text-amber-300 hover:bg-amber-500/10 hover:text-amber-200"
+                            title="Change or fix payment mode (Cash, UPI, Split)"
+                          >
+                            <CreditCard className="w-3 h-3 mr-1 text-amber-400" /> Edit Mode
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedSession(s)}
+                            className="h-7 px-2 text-[11px] text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10"
+                          >
+                            View Bill
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -809,6 +822,14 @@ export function Reports() {
         session={selectedSession}
         station={stations.find(st => st.id === (selectedSession ? selectedSession.station_id : ''))}
         onClose={() => setSelectedSession(null)}
+        onEditPayment={(s) => setEditPaymentSession(s)}
+      />
+
+      <EditPaymentModal
+        session={editPaymentSession}
+        open={!!editPaymentSession}
+        onClose={() => setEditPaymentSession(null)}
+        onUpdated={() => loadAllData()}
       />
     </div>
   );
