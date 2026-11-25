@@ -22,6 +22,9 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg')) return 'pdf-vendor';
+            if (id.includes('xlsx')) return 'xlsx-vendor';
+            if (id.includes('recharts') || id.includes('d3-')) return 'charts-vendor';
             return 'vendor';
           }
         }

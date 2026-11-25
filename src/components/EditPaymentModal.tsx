@@ -126,6 +126,31 @@ export function EditPaymentModal({ session, open, onClose, onUpdated }: EditPaym
         walletAmt = totalAmount;
       }
 
+      const oldWalletAmt = session.wallet_amount ?? (session.payment_mode === 'wallet' ? totalAmount : 0);
+      const walletDelta = Math.round((walletAmt - oldWalletAmt) * 100) / 100;
+
+      if (Math.abs(walletDelta) > 0.009) {
+        if (!session.customer_id) {
+          toast.error('Wallet payment is only available for registered members.');
+          setLoading(false);
+          return;
+        }
+        const cust = await db.customers.getById(session.customer_id);
+        if (!cust) {
+          toast.error('Could not find customer record to adjust wallet balance.');
+          setLoading(false);
+          return;
+        }
+        const currentWallet = cust.wallet_balance || 0;
+        if (walletDelta > 0 && currentWallet + 0.009 < walletDelta) {
+          toast.error(`Insufficient wallet balance (available: ₹${currentWallet.toFixed(2)}, needed: ₹${walletDelta.toFixed(2)}).`);
+          setLoading(false);
+          return;
+        }
+        const nextWallet = Math.max(0, Math.round((currentWallet - walletDelta) * 100) / 100);
+        await db.customers.update(cust.id, { wallet_balance: nextWallet });
+      }
+
       const updatePayload: Partial<Session> = {
         payment_mode: paymentMode,
         cash_amount: cashAmt,
@@ -157,7 +182,12 @@ export function EditPaymentModal({ session, open, onClose, onUpdated }: EditPaym
         console.warn('Could not update matching transaction note:', txErr);
       }
 
-      toast.success(`Payment mode updated to ${paymentMode.toUpperCase()}!`);
+      const walletInfo = Math.abs(walletDelta) > 0.009
+        ? walletDelta > 0
+          ? ` (₹${walletDelta.toFixed(2)} deducted from wallet)`
+          : ` (₹${Math.abs(walletDelta).toFixed(2)} refunded to wallet)`
+        : '';
+      toast.success(`Payment mode updated to ${paymentMode.toUpperCase()}${walletInfo}!`);
       onUpdated?.();
       onClose();
     } catch (e: any) {

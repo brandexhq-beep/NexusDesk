@@ -1,4 +1,4 @@
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -61,7 +61,7 @@ export function PricingChartModal({ open, onClose, onUpdate, initialCategoryId }
   const [changeReason, setChangeReason] = useState('Pricing adjustment');
   const [isPending, startTransition] = useTransition();
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [stData, rules, catData, settings] = await Promise.all([
         db.stations.getAll(),
@@ -75,27 +75,28 @@ export function PricingChartModal({ open, onClose, onUpdate, initialCategoryId }
       if (settings?.currency_symbol) setCurrencyStr(settings.currency_symbol);
 
       if (catData.length > 0) {
-        const targetId = (initialCategoryId && catData.some(c => c.id === initialCategoryId))
-          ? initialCategoryId
-          : (activeCategoryId && catData.some(c => c.id === activeCategoryId))
-            ? activeCategoryId
-            : catData[0].id;
-        
-        setActiveCategoryId(targetId);
-        const activeCat = catData.find(c => c.id === targetId) || catData[0];
-        setLocalCategory(JSON.parse(JSON.stringify(activeCat)));
+        setActiveCategoryId((prevId) => {
+          const targetId = (initialCategoryId && catData.some(c => c.id === initialCategoryId))
+            ? initialCategoryId
+            : (prevId && catData.some(c => c.id === prevId))
+              ? prevId
+              : catData[0].id;
+          const activeCat = catData.find(c => c.id === targetId) || catData[0];
+          setLocalCategory(JSON.parse(JSON.stringify(activeCat)));
+          return targetId;
+        });
       }
     } catch (e) {
       console.error(e);
       toast.error('Failed to load pricing data');
     }
-  };
+  }, [initialCategoryId]);
 
   useEffect(() => {
     if (open) {
       loadData();
     }
-  }, [open, initialCategoryId]);
+  }, [open, loadData]);
 
   const handleSelectCategory = (catId: string) => {
     const cat = categories.find(c => c.id === catId);
@@ -307,7 +308,7 @@ export function PricingChartModal({ open, onClose, onUpdate, initialCategoryId }
             entity_id: localCategory.id,
             details: `Updated ${localCategory.name}: ${priceDiffs.length} price change(s). Reason: ${changeReason}`
           });
-        } catch (_) {}
+        } catch {}
 
         toast.success(`Saved pricing for "${localCategory.name}"`);
         setShowPreviewModal(false);

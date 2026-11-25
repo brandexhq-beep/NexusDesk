@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db, whatsapp } from '../services/db';
 import {
   MessageCircle, CheckCircle2, AlertCircle, Loader2,
@@ -25,14 +26,17 @@ interface QueueItem {
 }
 
 function ElapsedTimer({ startedAt }: { startedAt?: number | null }) {
-  const calcElapsed = () => {
+  const [elapsed, setElapsed] = useState(() => {
     if (!startedAt || isNaN(startedAt) || startedAt <= 0) return 0;
     return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-  };
-  const [elapsed, setElapsed] = useState(calcElapsed);
+  });
   useEffect(() => {
-    setElapsed(calcElapsed());
-    const t = setInterval(() => setElapsed(calcElapsed()), 1000);
+    const calc = () => {
+      if (!startedAt || isNaN(startedAt) || startedAt <= 0) return 0;
+      return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    };
+    setElapsed(calc());
+    const t = setInterval(() => setElapsed(calc()), 1000);
     return () => clearInterval(t);
   }, [startedAt]);
 
@@ -63,7 +67,7 @@ export function WhatsAppStatus() {
         ]);
         setQueue(queueRes || []);
         if (statusRes) setStatus(statusRes);
-      } catch (_) {}
+      } catch {}
     };
     fetch();
     pollRef.current = window.setInterval(fetch, 3000);
@@ -72,7 +76,7 @@ export function WhatsAppStatus() {
 
   const handleReconnect = async () => {
     setReconnecting(true);
-    try { await whatsapp.reconnect(); } catch (_) {}
+    try { await whatsapp.reconnect(); } catch {}
     setTimeout(() => setReconnecting(false), 3000);
   };
 
@@ -274,13 +278,14 @@ export function WhatsAppStatus() {
 
 export function HeaderWhatsAppBadge() {
   const [status, setStatus] = useState<WaStatus | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const check = async () => {
       try {
         const res = await whatsapp.getStatus();
         if (res) setStatus(res);
-      } catch (_) {}
+      } catch {}
     };
     check();
     const interval = setInterval(check, 5000);
@@ -289,38 +294,60 @@ export function HeaderWhatsAppBadge() {
 
   if (!status) return null;
 
+  const openWhatsAppSettings = () => navigate('/settings?tab=whatsapp');
+
   if (status.ready) {
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+      <button
+        type="button"
+        onClick={openWhatsAppSettings}
+        title="Open WhatsApp Settings"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium hover:bg-emerald-500/20 transition-colors cursor-pointer"
+      >
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
         <span>WhatsApp Ready</span>
-      </div>
+      </button>
     );
   }
 
   if (status.state === 'qr') {
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 font-medium">
+      <button
+        type="button"
+        onClick={openWhatsAppSettings}
+        title="Click to scan WhatsApp QR code"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 font-medium hover:bg-yellow-500/20 transition-colors cursor-pointer"
+      >
         <span className="w-2 h-2 rounded-full bg-yellow-400" />
         <span>Scan WA QR Code</span>
-      </div>
+      </button>
     );
   }
 
   if (status.state === 'disconnected' || status.state === 'error' || status.state === 'auth_failure') {
     return (
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-red-500/10 text-red-400 border border-red-500/20 font-medium">
+      <button
+        type="button"
+        onClick={openWhatsAppSettings}
+        title="Click to open WhatsApp connection settings"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-red-500/10 text-red-400 border border-red-500/20 font-medium hover:bg-red-500/20 transition-colors cursor-pointer"
+      >
         <span className="w-2 h-2 rounded-full bg-red-400" />
         <span>WhatsApp Offline</span>
-      </div>
+      </button>
     );
   }
 
   return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-medium">
+    <button
+      type="button"
+      onClick={openWhatsAppSettings}
+      title="Open WhatsApp Settings"
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-medium hover:bg-indigo-500/20 transition-colors cursor-pointer"
+    >
       <Loader2 className="w-3 h-3 animate-spin text-indigo-400" />
       <span>Connecting WA…</span>
-    </div>
+    </button>
   );
 }
 

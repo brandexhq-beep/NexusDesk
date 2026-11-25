@@ -3,6 +3,7 @@ const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { setupIpcHandlers, closeDatabase } = require('./database.cjs');
 const { startWhatsAppClient, stopWhatsAppClient } = require('./whatsapp.cjs');
+const { initLogger, getDiagnosticLogText } = require('./logger.cjs');
 
 let mainWindow;
 
@@ -192,8 +193,32 @@ ipcMain.handle('db:backup:readImportFile', async (_, filePath) => {
   }
 });
 
+ipcMain.handle('logs:export', async () => {
+  try {
+    const defaultName = `nexusdesk-logs-${new Date().toISOString().split('T')[0]}.txt`;
+    const saveRes = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export Diagnostic Logs',
+      defaultPath: defaultName,
+      filters: [{ name: 'Text Log Files', extensions: ['txt', 'log'] }],
+    });
+    if (saveRes.canceled || !saveRes.filePath) {
+      return { canceled: true };
+    }
+    const content = getDiagnosticLogText({
+      AppVersion: app.getVersion(),
+      UserData: app.getPath('userData'),
+    });
+    fs.writeFileSync(saveRes.filePath, content, 'utf-8');
+    return { success: true, filePath: saveRes.filePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 app.on('ready', () => {
+  if (!gotTheLock) return;
+  initLogger(app.getPath('userData'));
   console.log('[App] Application ready event triggered');
   try {
     setupIpcHandlers();
@@ -239,14 +264,16 @@ ipcMain.handle('updater:installNow', async () => {
   isUpdating = true;
   try {
     await stopWhatsAppClient();
-  } catch (_) {}
+  } catch {}
   try {
     closeDatabase();
-  } catch (_) {}
+  } catch {}
   autoUpdater.quitAndInstall(false, true);
 });
 
 app.on('before-quit', async (e) => {
+  if (!gotTheLock) return;
+  if (!gotTheLock) return;
   if (isUpdating) return; // Allow electron-updater to restart immediately without interception
   if (isQuitting) return; // Cleanup already in progress
 

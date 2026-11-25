@@ -327,13 +327,16 @@ const createBrowserMockStorage = () => {
     updater: {
       checkForUpdates: () => {},
       installUpdate: () => {},
-      onUpdateChecking: () => {},
-      onUpdateAvailable: () => {},
-      onUpdateNotAvailable: () => {},
-      onUpdateDownloaded: () => {},
-      onUpdateProgress: () => {},
-      onUpdateError: () => {},
+      onUpdateChecking: () => () => {},
+      onUpdateAvailable: () => () => {},
+      onUpdateNotAvailable: () => () => {},
+      onUpdateDownloaded: () => () => {},
+      onUpdateProgress: () => () => {},
+      onUpdateError: () => () => {},
       removeListeners: () => {},
+    },
+    logs: {
+      export: async () => ({ success: false, error: 'Only available in desktop app' }),
     },
     dialog: {
       showSaveDialog: async () => '',
@@ -532,4 +535,8 @@ export const updater = {
 export const dialog = {
   showSaveDialog: (filename: string) => api.dialog.showSaveDialog(filename),
   showOpenDialog: () => api.dialog.showOpenDialog(),
+};
+
+export const logs = {
+  exportLogs: async () => api.logs?.export ? api.logs.export() : { success: false, error: 'Not available' },
 };

@@ -1,4 +1,4 @@
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useCallback } from 'react';
 import { db } from '../services/db';
 import type { PricingCategory, Station } from '../types';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,7 @@ export function PricingManager() {
   const [priceDiffs, setPriceDiffs] = useState<PriceDiff[]>([]);
   const [isPending, startTransition] = useTransition();
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [cats, stns] = await Promise.all([
@@ -57,9 +57,11 @@ export function PricingManager() {
       setStations(stns);
 
       if (cats.length > 0) {
-        const currentActive = cats.find(c => c.id === activeCategoryId) || cats[0];
-        setActiveCategoryId(currentActive.id);
-        setLocalCategory(JSON.parse(JSON.stringify(currentActive)));
+        setActiveCategoryId((prevId) => {
+          const currentActive = cats.find(c => c.id === prevId) || cats[0];
+          setLocalCategory(JSON.parse(JSON.stringify(currentActive)));
+          return currentActive.id;
+        });
       }
     } catch (e) {
       console.error(e);
@@ -67,11 +69,11 @@ export function PricingManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const handleSelectCategory = (cat: PricingCategory) => {
     setActiveCategoryId(cat.id);

@@ -17,6 +17,7 @@ export function GlobalAlerts() {
   // Deduplication state machine references
   const dismissedStockAlertsRef = useRef<Set<string>>(new Set());
   const itemAlertStatesRef = useRef<Map<string, StockAlertState>>(new Map());
+  const prevAlertCountRef = useRef<number>(0);
 
   useEffect(() => {
     const checkSessions = async () => {
@@ -24,8 +25,8 @@ export function GlobalAlerts() {
       const stations = await db.stations.getAll();
       const settings = await db.settings.get();
 
-      const r1 = settings.session_reminder_mins_1 || 10;
-      const r2 = settings.session_reminder_mins_2 || 5;
+      const r1 = settings.session_reminder_mins_1 ?? 15;
+      const r2 = settings.session_reminder_mins_2 ?? 5;
       const rEnd = settings.session_reminder_end_enabled ?? true;
       const waEnabled = settings.whatsapp_session_reminders_enabled ?? true;
 
@@ -62,10 +63,15 @@ export function GlobalAlerts() {
 
         const formatMsg = (tpl: string | undefined, def: string, mins: number) => {
           if (!tpl) return def;
+          const customerName = customer?.name || 'Customer';
+          const minsStr = `${mins}`;
           return tpl
-            .replace('{customer_name}', customer?.name || 'Customer')
-            .replace('{station_name}', stName)
-            .replace('{time_left}', `${mins}`);
+            .replaceAll('{name}', customerName)
+            .replaceAll('{customer_name}', customerName)
+            .replaceAll('{station}', stName)
+            .replaceAll('{station_name}', stName)
+            .replaceAll('{time}', minsStr)
+            .replaceAll('{time_left}', minsStr);
         };
 
         const remMins = (session.prepaid_duration_mins || 0) - diffMins;
@@ -98,9 +104,10 @@ export function GlobalAlerts() {
         }
       }
 
-      if (newAlerts.length > 0 && alerts.length !== newAlerts.length) {
+      if (newAlerts.length > 0 && prevAlertCountRef.current !== newAlerts.length) {
         playSound();
       }
+      prevAlertCountRef.current = newAlerts.length;
 
       setAlerts(newAlerts);
     };

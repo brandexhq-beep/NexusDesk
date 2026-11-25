@@ -4,6 +4,7 @@ const { jsonStore } = require('./database.cjs');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const { app } = require('electron');
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -14,15 +15,24 @@ let initError = null;
 let clientState = 'starting'; // 'starting' | 'qr' | 'authenticated' | 'ready' | 'disconnected' | 'auth_failure' | 'error'
 let startedAt = Date.now();
 let client = null;
+let activeBrowserPid = null;
 let queueInterval = null;
 let healthInterval = null;
+let promoInterval = null;
+let watchdogInterval = null;
+let cleanupInterval = null;
+let cleanupInitTimer = null;
 let restartAttempts = 0;
+let lifecycleGen = 0;
+let isStopped = false;
+let isManuallyDisconnected = false;
+let lifecycleChain = Promise.resolve();
 const MAX_RESTART_ATTEMPTS = 10;
 
 // ─── Anti-ban Rate Limiter ────────────────────────────────────────────────────
 // Tracks per-phone sends per day to prevent WhatsApp bans
 const dailySendCounts = {};  // { 'phoneNumber': { count: N, date: 'YYYY-MM-DD' } }
-const MAX_DAILY_PER_NUMBER = 3;   // Max messages per phone per day (transactional)
+const MAX_DAILY_PER_NUMBER = 10;  // Max non-invoice messages per phone per day (transactional/reminders)
 const MAX_DAILY_PER_NUMBER_PROMO = 1; // Max promo messages per phone per day
 
 // Hourly promo rate limit (globally across all recipients)
@@ -49,7 +59,6 @@ const DND_END_HOUR_IST = 9;   // 9 AM
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function getBrowserExecutablePath() {
-    const fs = require('fs');
     const localAppData = process.env.LOCALAPPDATA || '';
     const programFiles = process.env.PROGRAMFILES || 'C:\\Program Files';
     const programFilesX86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
@@ -63,7 +72,7 @@ function getBrowserExecutablePath() {
         path.join(localAppData, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
     ];
     for (const p of paths) {
-        try { if (p && fs.existsSync(p)) return p; } catch (_) {}
+        try { if (p && fs.existsSync(p)) return p; } catch {}
     }
     return null;
 }
@@ -163,40 +172,248 @@ function incrementHourlyPromo() {
 
 // ─── Browser Process & Client Cleanup ────────────────────────────────────────
 let restartTimer = null;
+const SESSION_LOCK_FILES = [
+    'lockfile',
+    'SingletonLock',
+    'SingletonSocket',
+    'SingletonCookie',
+    'DevToolsActivePort',
+];
 
-async function destroyClientSafely() {
-    if (!client) return;
-    const oldClient = client;
-    client = null;
-    isClientReady = false;
-    try {
-        if (oldClient.pupBrowser) {
-            const proc = oldClient.pupBrowser.process();
-            if (proc && !proc.killed) {
-                setTimeout(() => {
-                    try { proc.kill('SIGKILL'); } catch (_) {}
-                }, 2000);
+function getAuthDataPath() {
+    return path.join(app.getPath('userData'), '.wwebjs_auth');
+}
+
+function getSessionDir() {
+    return path.join(getAuthDataPath(), 'session');
+}
+
+function runLifecycle(fn) {
+    const next = lifecycleChain.then(fn, fn);
+    lifecycleChain = next.catch(() => {});
+    return next;
+}
+
+function sleep(ms) {
+    return new Promise(res => setTimeout(res, ms));
+}
+
+function killProcessTree(pid) {
+    if (!Number.isInteger(pid) || pid <= 0) return Promise.resolve();
+    return new Promise((resolve) => {
+        if (process.platform === 'win32') {
+            execFile(
+                'taskkill',
+                ['/PID', String(pid), '/T', '/F'],
+                { windowsHide: true, timeout: 4000 },
+                () => resolve()
+            );
+        } else {
+            try { process.kill(pid, 'SIGKILL'); } catch {}
+            resolve();
+        }
+    });
+}
+
+function findOrphanedSessionPids(sessionDir) {
+    if (process.platform !== 'win32') return Promise.resolve([]);
+    const resolvedDir = path.resolve(sessionDir);
+    const psExe = path.join(
+        process.env.SystemRoot || 'C:\\Windows',
+        'System32',
+        'WindowsPowerShell',
+        'v1.0',
+        'powershell.exe'
+    );
+    const psScript = [
+        '$target = $env:NEXUSDESK_WA_SESSION_DIR;',
+        'if (-not $target) { exit 0 }',
+        '$norm = $target.TrimEnd([char]92, [char]47).ToLowerInvariant();',
+        '$procs = Get-CimInstance Win32_Process -Filter "Name=\'chrome.exe\' OR Name=\'msedge.exe\' OR Name=\'chromium.exe\' OR Name=\'chrome-headless-shell.exe\' OR Name=\'headless_shell.exe\'" -ErrorAction SilentlyContinue;',
+        'foreach ($p in $procs) {',
+        '  if ($p.CommandLine -and $p.CommandLine.ToLowerInvariant().Replace([char]47, [char]92).Contains($norm)) {',
+        '    Write-Output $p.ProcessId',
+        '  }',
+        '}',
+    ].join(' ');
+
+    return new Promise((resolve) => {
+        execFile(
+            psExe,
+            ['-NoProfile', '-NonInteractive', '-Command', psScript],
+            {
+                env: { ...process.env, NEXUSDESK_WA_SESSION_DIR: resolvedDir },
+                timeout: 5000,
+                windowsHide: true,
+            },
+            (err, stdout) => {
+                if (err || !stdout) return resolve([]);
+                const pids = stdout
+                    .split(/\r?\n/)
+                    .map(line => parseInt(line.trim(), 10))
+                    .filter(pid => Number.isInteger(pid) && pid > 0);
+                resolve([...new Set(pids)]);
+            }
+        );
+    });
+}
+
+function hasAnyLockFiles(sessionDir) {
+    if (!fs.existsSync(sessionDir)) return false;
+    return SESSION_LOCK_FILES.some(fileName => fs.existsSync(path.join(sessionDir, fileName)));
+}
+
+async function clearStaleLockFiles(sessionDir) {
+    if (!fs.existsSync(sessionDir)) return;
+    for (const fileName of SESSION_LOCK_FILES) {
+        const lockPath = path.join(sessionDir, fileName);
+        if (!fs.existsSync(lockPath)) continue;
+        for (let attempt = 0; attempt < 5; attempt++) {
+            try {
+                fs.rmSync(lockPath, { force: true });
+                console.log(`[WhatsApp] Removed stale browser lock file: ${fileName}`);
+                break;
+            } catch (err) {
+                if ((err.code === 'EBUSY' || err.code === 'EPERM') && attempt < 4) {
+                    await sleep(200);
+                } else {
+                    console.warn(`[WhatsApp] Could not remove ${fileName}: ${err.message}`);
+                    break;
+                }
             }
         }
+    }
+}
+
+async function cleanupOrphanedSessionBrowsers(sessionDir, forceScan = false) {
+    const pids = [];
+    if (activeBrowserPid) {
+        pids.push(activeBrowserPid);
+        activeBrowserPid = null;
+    }
+
+    if (forceScan || hasAnyLockFiles(sessionDir)) {
+        const foundPids = await findOrphanedSessionPids(sessionDir);
+        for (const pid of foundPids) {
+            if (!pids.includes(pid)) pids.push(pid);
+        }
+    }
+
+    if (pids.length > 0) {
+        console.warn(`[WhatsApp] Terminating ${pids.length} orphaned session browser process(es): ${pids.join(', ')}`);
+        await Promise.all(pids.map(pid => killProcessTree(pid)));
+        await sleep(300);
+    }
+
+    await clearStaleLockFiles(sessionDir);
+    clearStaleServiceWorker(sessionDir);
+}
+
+async function destroyClientSafely(targetClient = null, destroyTimeoutMs = 2000) {
+    const oldClient = targetClient || client;
+    if (!targetClient || targetClient === client) {
+        client = null;
+        isClientReady = false;
+    }
+    if (!oldClient) return;
+
+    let proc = null;
+    let pid = null;
+    try {
+        if (oldClient.pupBrowser) {
+            proc = oldClient.pupBrowser.process();
+            pid = proc?.pid || null;
+        }
+    } catch {}
+    if (!pid && !targetClient) {
+        pid = activeBrowserPid;
+    }
+
+    try {
         await Promise.race([
             oldClient.destroy().catch(() => {}),
-            new Promise(res => setTimeout(res, 3000)),
+            sleep(destroyTimeoutMs),
         ]);
-    } catch (_) {}
+    } catch {}
+
+    const stillRunning = proc ? (proc.exitCode === null && !proc.killed) : Boolean(pid);
+    if (pid && stillRunning) {
+        await killProcessTree(pid);
+        await sleep(200);
+    }
+    if (!targetClient || pid === activeBrowserPid) {
+        activeBrowserPid = null;
+    }
+}
+
+const WA_PINNED_VERSION = '2.3000.1048860261-alpha';
+const WA_REMOTE_HTML_URL = `https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/${WA_PINNED_VERSION}.html`;
+
+function clearStaleServiceWorker(sessionDir) {
+    const swDir = path.join(sessionDir, 'Default', 'Service Worker');
+    if (!fs.existsSync(swDir)) return;
+    try {
+        fs.rmSync(swDir, { recursive: true, force: true });
+        console.log('[WhatsApp] Cleared cached Service Worker to keep pinned web version active.');
+    } catch (err) {
+        console.warn('[WhatsApp] Could not clear Service Worker cache:', err.message);
+    }
+}
+
+async function ensureLocalWebCache() {
+    const cacheDir = path.join(app.getPath('userData'), '.wwebjs_cache');
+    const cachedHtmlPath = path.join(cacheDir, `${WA_PINNED_VERSION}.html`);
+    if (fs.existsSync(cachedHtmlPath)) {
+        try {
+            if (fs.statSync(cachedHtmlPath).size > 10000) return cacheDir;
+        } catch {}
+    }
+
+    try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(WA_REMOTE_HTML_URL, { signal: controller.signal });
+        clearTimeout(timer);
+        if (res.ok) {
+            const html = await res.text();
+            if (html && html.length > 10000) {
+                fs.mkdirSync(cacheDir, { recursive: true });
+                fs.writeFileSync(cachedHtmlPath, html, 'utf-8');
+                console.log('[WhatsApp] Cached pinned WhatsApp Web version locally.');
+                return cacheDir;
+            }
+        }
+    } catch (err) {
+        console.warn('[WhatsApp] Could not pre-cache pinned WhatsApp Web HTML:', err.message);
+    }
+    return null;
 }
 
 // ─── Build Client ─────────────────────────────────────────────────────────────
-function buildClient() {
-    const authDataPath = path.join(app.getPath('userData'), '.wwebjs_auth');
+function buildClient(localCacheDir = null) {
+    const authDataPath = getAuthDataPath();
+    const webVersionOpts = localCacheDir
+        ? {
+              webVersion: WA_PINNED_VERSION,
+              webVersionCache: {
+                  type: 'local',
+                  path: localCacheDir,
+                  strict: false,
+              },
+          }
+        : {
+              webVersionCache: {
+                  type: 'remote',
+                  remotePath: WA_REMOTE_HTML_URL,
+                  strict: false,
+              },
+          };
+
     return new Client({
         authStrategy: new LocalAuth({
             dataPath: authDataPath,
         }),
-        webVersionCache: {
-            type: 'remote',
-            remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1048860261-alpha.html',
-            strict: false,
-        },
+        ...webVersionOpts,
         puppeteer: {
             headless: true,
             executablePath: getBrowserExecutablePath() || undefined,
@@ -231,16 +448,29 @@ function buildClient() {
 
 // ─── Main Entry ───────────────────────────────────────────────────────────────
 function startWhatsAppClient(ipcMain) {
+    isStopped = false;
+    isManuallyDisconnected = false;
 
-    function initClient() {
+    async function startClientInternal(gen, forceClean = false) {
+        if (gen !== lifecycleGen || isStopped || isManuallyDisconnected) return;
+
         clientState = 'starting';
         isClientReady = false;
         currentQR = null;
         initError = null;
         startedAt = Date.now();
 
+        const sessionDir = getSessionDir();
+        await destroyClientSafely();
+        await cleanupOrphanedSessionBrowsers(sessionDir, forceClean);
+        const localCacheDir = await ensureLocalWebCache();
+
+        if (gen !== lifecycleGen || isStopped || isManuallyDisconnected) return;
+
+        let instance;
         try {
-            client = buildClient();
+            instance = buildClient(localCacheDir);
+            client = instance;
         } catch (err) {
             clientState = 'error';
             initError = `Browser launch failed: ${err.message}`;
@@ -249,14 +479,18 @@ function startWhatsAppClient(ipcMain) {
             return;
         }
 
-        client.on('qr', (qr) => {
+        const isStaleInstance = () => gen !== lifecycleGen || client !== instance || isStopped || isManuallyDisconnected;
+
+        instance.on('qr', (qr) => {
+            if (isStaleInstance()) return;
             console.log('[WhatsApp] QR received — awaiting scan.');
             qrcode.generate(qr, { small: true });
             currentQR = qr;
             clientState = 'qr';
         });
 
-        client.on('ready', async () => {
+        instance.on('ready', async () => {
+            if (isStaleInstance()) return;
             console.log('[WhatsApp] ✓ Client ready & connected');
             isClientReady = true;
             currentQR = null;
@@ -265,20 +499,28 @@ function startWhatsAppClient(ipcMain) {
             restartAttempts = 0;
 
             try {
-                if (client && client.pupPage) {
-                    client.pupPage.on('error', (err) => {
+                const pid = instance.pupBrowser?.process?.()?.pid;
+                if (pid) activeBrowserPid = pid;
+            } catch {}
+
+            try {
+                if (instance && instance.pupPage) {
+                    instance.pupPage.on('error', (err) => {
+                        if (isStaleInstance()) return;
                         console.warn('[WhatsApp] Puppeteer page error:', err.message);
                         if (err.message.includes('detached Frame') || err.message.includes('Target closed') || err.message.includes('Session closed')) {
                             isClientReady = false;
                             clientState = 'disconnected';
+                            stopHealthHeartbeat();
                             scheduleRestart(3000);
                         }
                     });
-                    client.pupPage.on('pageerror', (err) => {
+                    instance.pupPage.on('pageerror', (err) => {
+                        if (isStaleInstance()) return;
                         console.warn('[WhatsApp] Puppeteer page unhandled JS exception:', err.message);
                     });
 
-                    await client.pupPage.evaluate(() => {
+                    await instance.pupPage.evaluate(() => {
                         try {
                             const MediaStorage = window.require && window.require('WAWebMediaStorage');
                             if (MediaStorage && MediaStorage.getOrCreateMediaObject) {
@@ -291,28 +533,32 @@ function startWhatsAppClient(ipcMain) {
                                     return obj;
                                 };
                             }
-                        } catch (_) {}
+                        } catch {}
                     });
                 }
-            } catch (_) {}
+            } catch {}
 
-            startHealthHeartbeat();
-            
+            if (!isStaleInstance()) {
+                startHealthHeartbeat();
+            }
+
             // Immediate queue sweep on ready
             setTimeout(() => {
-                if (isClientReady && !isProcessingQueue) {
+                if (!isStaleInstance() && isClientReady && !isProcessingQueue) {
                     console.log('[WhatsApp] Ready event triggered queue sweep.');
                 }
             }, 1000);
         });
 
-        client.on('authenticated', () => {
+        instance.on('authenticated', () => {
+            if (isStaleInstance()) return;
             console.log('[WhatsApp] Authenticated — loading session…');
             currentQR = null;
             clientState = 'authenticated';
         });
 
-        client.on('auth_failure', (msg) => {
+        instance.on('auth_failure', (msg) => {
+            if (isStaleInstance()) return;
             console.error('[WhatsApp] Auth failure:', msg);
             isClientReady = false;
             currentQR = null;
@@ -322,7 +568,8 @@ function startWhatsAppClient(ipcMain) {
             scheduleRestart(5000);
         });
 
-        client.on('disconnected', (reason) => {
+        instance.on('disconnected', (reason) => {
+            if (isStaleInstance()) return;
             console.warn('[WhatsApp] Disconnected:', reason);
             isClientReady = false;
             currentQR = null;
@@ -332,21 +579,49 @@ function startWhatsAppClient(ipcMain) {
             scheduleRestart(5000);
         });
 
-        client.initialize().catch((err) => {
-            console.error('[WhatsApp] initialize() threw:', err.message);
+        instance.initialize().then(async () => {
+            try {
+                const pid = instance.pupBrowser?.process?.()?.pid;
+                if (pid && !isStaleInstance()) {
+                    activeBrowserPid = pid;
+                }
+            } catch {}
+
+            // If this init finished after being superseded/stopped, tear it down cleanly
+            if (isStaleInstance()) {
+                await destroyClientSafely(instance, 1500);
+            }
+        }).catch(async (err) => {
+            if (isStaleInstance()) {
+                await destroyClientSafely(instance, 1500);
+                return;
+            }
+            const errMsg = err?.message || String(err);
+            console.error('[WhatsApp] initialize() threw:', errMsg);
             isClientReady = false;
             clientState = 'error';
-            initError = `Initialization failed: ${err.message}`;
+            initError = `Initialization failed: ${errMsg}`;
             stopHealthHeartbeat();
-            scheduleRestart(15000);
+
+            if (/already running|ProcessSingleton|lockfile/i.test(errMsg)) {
+                console.warn('[WhatsApp] Detected stale browser profile lock — scheduling clean recovery...');
+                scheduleRestart(3000, true);
+            } else {
+                scheduleRestart(15000);
+            }
         });
+    }
+
+    function initClient(forceClean = false) {
+        const gen = ++lifecycleGen;
+        return runLifecycle(() => startClientInternal(gen, forceClean));
     }
 
     // ── Health Heartbeat & Frame Liveness ────────────────────────────────────
     function startHealthHeartbeat() {
         stopHealthHeartbeat();
         healthInterval = setInterval(async () => {
-            if (!client) return;
+            if (!client || isStopped || isManuallyDisconnected) return;
             try {
                 const state = await Promise.race([
                     client.getState(),
@@ -384,23 +659,51 @@ function startWhatsAppClient(ipcMain) {
         if (healthInterval) { clearInterval(healthInterval); healthInterval = null; }
     }
 
+    // ── Stuck-Startup Watchdog ───────────────────────────────────────────────
+    if (watchdogInterval) clearInterval(watchdogInterval);
+    watchdogInterval = setInterval(() => {
+        if (isStopped || isManuallyDisconnected) return;
+        if ((clientState === 'starting' || clientState === 'authenticated') && (Date.now() - startedAt > 105000)) {
+            console.warn(`[WhatsApp] Startup watchdog: stuck in "${clientState}" for >105s — forcing clean restart.`);
+            isClientReady = false;
+            clientState = 'error';
+            initError = 'Browser startup timed out — auto-restarting…';
+            stopHealthHeartbeat();
+            initClient(true);
+        }
+    }, 20000);
+
+    // ── Queue Bloat Cleanup (strip old sent PDFs >24h, prune sent >7d) ───────
+    if (cleanupInitTimer) clearTimeout(cleanupInitTimer);
+    cleanupInitTimer = setTimeout(() => {
+        cleanupInitTimer = null;
+        if (!isStopped) pruneOldQueueEntries();
+    }, 10000);
+    if (cleanupInterval) clearInterval(cleanupInterval);
+    cleanupInterval = setInterval(() => {
+        if (!isStopped) pruneOldQueueEntries();
+    }, 60 * 60 * 1000);
+
     // ── Continuous Self-Healing Auto Restart ──────────────────────────────────
-    function scheduleRestart(delayMs) {
+    function scheduleRestart(delayMs, forceClean = false) {
+        if (isStopped || isManuallyDisconnected) return;
         if (restartTimer) clearTimeout(restartTimer);
 
         // Exponential backoff capped at 45 seconds for continuous self-healing
         const backoff = Math.min(delayMs * Math.pow(1.3, Math.min(restartAttempts, 6)), 45000);
         restartAttempts++;
         console.log(`[WhatsApp] Auto-recovery scheduled in ${Math.round(backoff / 1000)}s (attempt ${restartAttempts})`);
-        
-        restartTimer = setTimeout(async () => {
-            await destroyClientSafely();
-            initClient();
+
+        restartTimer = setTimeout(() => {
+            restartTimer = null;
+            if (!isStopped && !isManuallyDisconnected) {
+                initClient(forceClean);
+            }
         }, backoff);
     }
 
     // ── Start ────────────────────────────────────────────────────────────────
-    initClient();
+    initClient(false);
 
     // ── IPC: Status ──────────────────────────────────────────────────────────
     ipcMain.handle('whatsapp:getStatus', () => {
@@ -435,59 +738,91 @@ function startWhatsAppClient(ipcMain) {
     // ── IPC: Manual Reconnect ────────────────────────────────────────────────
     ipcMain.handle('whatsapp:reconnect', async () => {
         console.log('[WhatsApp] Manual reconnect requested.');
-        if (restartTimer) clearTimeout(restartTimer);
+        if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+        isStopped = false;
+        isManuallyDisconnected = false;
         restartAttempts = 0;
         stopHealthHeartbeat();
-        await destroyClientSafely();
-        setTimeout(() => initClient(), 500);
+        isClientReady = false;
+        currentQR = null;
+        clientState = 'starting';
+        initError = null;
+        await initClient(true);
         return { success: true };
     });
 
     // ── IPC: Manual Disconnect ───────────────────────────────────────────────
     ipcMain.handle('whatsapp:disconnect', async () => {
         console.log('[WhatsApp] Manual disconnect requested.');
-        if (restartTimer) clearTimeout(restartTimer);
+        if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+        isManuallyDisconnected = true;
+        ++lifecycleGen;
         stopHealthHeartbeat();
         isClientReady = false;
         currentQR = null;
         clientState = 'disconnected';
         initError = 'Disconnected by operator';
-        await destroyClientSafely();
+        await runLifecycle(async () => {
+            await destroyClientSafely();
+            await cleanupOrphanedSessionBrowsers(getSessionDir(), true);
+        });
         return { success: true };
     });
 
     // ── IPC: Logout & Unlink Session ────────────────────────────────────────
     ipcMain.handle('whatsapp:logout', async () => {
         console.log('[WhatsApp] Manual logout & unlink requested.');
+        if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+        isStopped = false;
+        isManuallyDisconnected = false;
+        restartAttempts = 0;
+        const myGen = ++lifecycleGen;
         stopHealthHeartbeat();
         isClientReady = false;
         currentQR = null;
         clientState = 'starting';
         initError = null;
-        try {
-            if (client) {
-                try { await client.logout(); } catch (_) {}
-                await client.destroy().catch(() => {});
-                client = null;
-            }
-        } catch (_) {}
 
-        try {
-            const authDataPath = path.join(app.getPath('userData'), '.wwebjs_auth');
-            if (fs.existsSync(authDataPath)) {
-                fs.rmSync(authDataPath, { recursive: true, force: true });
-                console.log('[WhatsApp] Cleared .wwebjs_auth directory.');
+        await runLifecycle(async () => {
+            if (myGen !== lifecycleGen || isStopped) return;
+            const currentClient = client;
+            if (currentClient) {
+                try {
+                    if (currentClient.pupPage) {
+                        await Promise.race([
+                            currentClient.logout().catch(() => {}),
+                            sleep(2500),
+                        ]);
+                    }
+                } catch {}
             }
-        } catch (authRmErr) {
-            console.warn('[WhatsApp] Could not clean auth folder:', authRmErr.message);
-        }
+            await destroyClientSafely();
+            await cleanupOrphanedSessionBrowsers(getSessionDir(), true);
 
-        setTimeout(() => initClient(), 500);
+            const authDataPath = getAuthDataPath();
+            try {
+                if (fs.existsSync(authDataPath)) {
+                    fs.rmSync(authDataPath, {
+                        recursive: true,
+                        force: true,
+                        maxRetries: 6,
+                        retryDelay: 250,
+                    });
+                    console.log('[WhatsApp] Cleared .wwebjs_auth directory.');
+                }
+            } catch (authRmErr) {
+                console.warn('[WhatsApp] Could not clean auth folder:', authRmErr.message);
+            }
+
+            await sleep(300);
+            await startClientInternal(myGen, false);
+        });
+
         return { success: true };
     });
 
     // ── IPC: Send Invoice / Message ──────────────────────────────────────────
-    ipcMain.handle('whatsapp:sendInvoice', (_, { phone, message, pdfBase64, pdfName, eventId }) => {
+    ipcMain.handle('whatsapp:sendInvoice', (_, { phone, message, pdfBase64, pdfName, eventId, bypassDailyLimit }) => {
         const normalized = normalizePhone(phone);
         if (!normalized) {
             console.warn(`[WhatsApp] Invalid phone skipped: "${phone}"`);
@@ -523,6 +858,7 @@ function startWhatsAppClient(ipcMain) {
             pdfName,
             eventId: eventId || null,
             isPromo: false,
+            bypassDailyLimit: Boolean(bypassDailyLimit),
             timestamp: Date.now(),
         });
         recordRecentSend(chatId, dedupKey);
@@ -547,11 +883,20 @@ function startWhatsAppClient(ipcMain) {
 
         isProcessingQueue = true;
         const now = Date.now();
+        let transactionalCooldownMs = TRANSACTIONAL_COOLDOWN_MS;
+        try {
+            const appSettings = jsonStore.getSettings();
+            const configuredSec = Number(appSettings?.wa_queue_cooldown_sec);
+            if (Number.isFinite(configuredSec) && configuredSec >= 1) {
+                transactionalCooldownMs = Math.min(configuredSec, 120) * 1000;
+            }
+        } catch {}
+
         let itemToProcess = null;
 
         for (const item of pendingItems) {
             const lastSent = lastSentTimes[item.chatId] || 0;
-            const cooldown = item.isPromo ? PROMO_COOLDOWN_MS : TRANSACTIONAL_COOLDOWN_MS;
+            const cooldown = item.isPromo ? PROMO_COOLDOWN_MS : transactionalCooldownMs;
 
             if (now - lastSent < cooldown) continue;
 
@@ -567,8 +912,8 @@ function startWhatsAppClient(ipcMain) {
                 continue;
             }
 
-            // Per-number daily limit
-            if (hasReachedDailyLimit(item.chatId, item.isPromo)) {
+            // Per-number daily limit (never drop paid checkout invoices)
+            if (!item.pdfBase64 && !item.bypassDailyLimit && hasReachedDailyLimit(item.chatId, item.isPromo)) {
                 // Mark as failed with a clear reason so it doesn't loop forever
                 jsonStore.update('whatsapp_queue', item.id, {
                     status: 'failed',
@@ -757,7 +1102,8 @@ function startWhatsAppClient(ipcMain) {
     }, 3000);
 
     // ── Promotions Cron ──────────────────────────────────────────────────────
-    setInterval(() => {
+    if (promoInterval) clearInterval(promoInterval);
+    promoInterval = setInterval(() => {
         let promos;
         try {
             promos = jsonStore.getAll('whatsapp_promotions');
@@ -835,6 +1181,8 @@ function startWhatsAppClient(ipcMain) {
 
 async function stopWhatsAppClient() {
     console.log('[WhatsApp] Stopping client gracefully...');
+    isStopped = true;
+    ++lifecycleGen;
     isProcessingQueue = false;
     if (restartTimer) {
         clearTimeout(restartTimer);
@@ -848,9 +1196,67 @@ async function stopWhatsAppClient() {
         clearInterval(healthInterval);
         healthInterval = null;
     }
-    await destroyClientSafely();
+    if (promoInterval) {
+        clearInterval(promoInterval);
+        promoInterval = null;
+    }
+    if (watchdogInterval) {
+        clearInterval(watchdogInterval);
+        watchdogInterval = null;
+    }
+    if (cleanupInitTimer) {
+        clearTimeout(cleanupInitTimer);
+        cleanupInitTimer = null;
+    }
+    if (cleanupInterval) {
+        clearInterval(cleanupInterval);
+        cleanupInterval = null;
+    }
+    await runLifecycle(async () => {
+        await destroyClientSafely();
+        await clearStaleLockFiles(getSessionDir());
+    });
     isClientReady = false;
     clientState = 'disconnected';
 }
 
-module.exports = { startWhatsAppClient, stopWhatsAppClient };
+function pruneOldQueueEntries(store = jsonStore, now = Date.now()) {
+    try {
+        const items = store.getAll('whatsapp_queue');
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+        const SEVEN_DAYS_MS = 7 * ONE_DAY_MS;
+        let stripped = 0;
+        let pruned = 0;
+
+        for (const item of items) {
+            if (item.status !== 'sent') continue;
+            const doneAt = item.completedAt || item.timestamp || 0;
+            if (!doneAt) continue;
+            const age = now - doneAt;
+            if (age > SEVEN_DAYS_MS) {
+                store.delete('whatsapp_queue', item.id);
+                pruned++;
+            } else if (age > ONE_DAY_MS && (item.pdfBase64 || item.imageBase64)) {
+                store.update('whatsapp_queue', item.id, { pdfBase64: null, imageBase64: null });
+                stripped++;
+            }
+        }
+        if (stripped > 0 || pruned > 0) {
+            console.log(`[WhatsApp] Queue maintenance: stripped media from ${stripped} sent item(s), pruned ${pruned} old sent record(s).`);
+        }
+        return { stripped, pruned };
+    } catch (err) {
+        console.warn('[WhatsApp] Queue maintenance skipped:', err.message);
+        return { stripped: 0, pruned: 0 };
+    }
+}
+
+module.exports = {
+    startWhatsAppClient,
+    stopWhatsAppClient,
+    normalizePhone,
+    hasAnyLockFiles,
+    clearStaleLockFiles,
+    clearStaleServiceWorker,
+    pruneOldQueueEntries,
+};

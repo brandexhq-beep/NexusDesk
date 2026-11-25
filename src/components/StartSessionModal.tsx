@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -77,9 +77,13 @@ export function StartSessionModal({ station, onClose, onStart }: StartSessionMod
   }, [station]);
 
   const assignedCat = categories.find(c => c.id === station?.pricing_category_id);
-  const availablePlayerCounts: number[] = assignedCat?.player_counts?.length
-    ? assignedCat.player_counts
-    : (station?.player_rates ? Object.keys(station.player_rates).map(Number).sort((a, b) => a - b) : (station?.type.startsWith('ps5') || station?.type === 'pool' || station?.type === 'snooker' || station?.type.includes('multi') ? [1, 2, 3, 4] : [1]));
+  const availablePlayerCounts: number[] = useMemo(() => {
+    if (assignedCat?.player_counts?.length) return assignedCat.player_counts;
+    if (station?.player_rates) return Object.keys(station.player_rates).map(Number).sort((a, b) => a - b);
+    return station?.type.startsWith('ps5') || station?.type === 'pool' || station?.type === 'snooker' || station?.type.includes('multi')
+      ? [1, 2, 3, 4]
+      : [1];
+  }, [assignedCat, station]);
 
   useEffect(() => {
     if (availablePlayerCounts.length > 0 && !availablePlayerCounts.includes(numPlayers)) {

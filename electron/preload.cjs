@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+function subscribeEvent(channel, listener) {
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
 contextBridge.exposeInMainWorld('api', {
   db: {
     stations: {
@@ -110,13 +115,13 @@ contextBridge.exposeInMainWorld('api', {
     logout: ()         => ipcRenderer.invoke('auth:logout'),
   },
   updater: {
-    // Listen for update events from main process
-    onUpdateChecking:     (cb) => ipcRenderer.on('update_checking',      () => cb()),
-    onUpdateAvailable:    (cb) => ipcRenderer.on('update_available',     (_, info) => cb(info)),
-    onUpdateNotAvailable: (cb) => ipcRenderer.on('update_not_available', (_, info) => cb(info)),
-    onUpdateProgress:     (cb) => ipcRenderer.on('update_progress',      (_, info) => cb(info)),
-    onUpdateDownloaded:   (cb) => ipcRenderer.on('update_downloaded',    (_, info) => cb(info)),
-    onUpdateError:        (cb) => ipcRenderer.on('update_error',         (_, err) => cb(err)),
+    // Listen for update events from main process (returns unsubscribe function)
+    onUpdateChecking:     (cb) => subscribeEvent('update_checking',      () => cb()),
+    onUpdateAvailable:    (cb) => subscribeEvent('update_available',     (_, info) => cb(info)),
+    onUpdateNotAvailable: (cb) => subscribeEvent('update_not_available', (_, info) => cb(info)),
+    onUpdateProgress:     (cb) => subscribeEvent('update_progress',      (_, info) => cb(info)),
+    onUpdateDownloaded:   (cb) => subscribeEvent('update_downloaded',    (_, info) => cb(info)),
+    onUpdateError:        (cb) => subscribeEvent('update_error',         (_, err) => cb(err)),
     installUpdate: () => ipcRenderer.invoke('updater:installNow'),
     checkForUpdates: () => ipcRenderer.invoke('updater:checkNow'),
     removeListeners: () => {
@@ -127,6 +132,9 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.removeAllListeners('update_progress');
       ipcRenderer.removeAllListeners('update_error');
     },
+  },
+  logs: {
+    export: () => ipcRenderer.invoke('logs:export'),
   },
   dialog: {
     showSaveDialog:    (filename) => ipcRenderer.invoke('save-backup-dialog', filename),

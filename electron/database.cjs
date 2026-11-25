@@ -30,6 +30,11 @@ const jsonStore = {
   },
   delete: (table, id) => {
     db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+  },
+  getSettings: () => {
+    if (!db) return {};
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('app_settings');
+    return row ? JSON.parse(row.value) : {};
   }
 };
 
@@ -265,7 +270,7 @@ function runSaraGamingSeed() {
 }
 
 // ─── Database Initialiser ─────────────────────────────────────────────────────
-function autoBackup(dbPath) {
+function autoBackup(dbInstance) {
   try {
     const backupDir = path.join(app.getPath('userData'), 'backups');
     if (!fs.existsSync(backupDir)) {
@@ -284,11 +289,22 @@ function autoBackup(dbPath) {
 
     const today = new Date().toISOString().split('T')[0];
     const backupFile = path.join(backupDir, `database-${today}.sqlite`);
-    
+    const tmpBackupFile = `${backupFile}.tmp`;
+
     // Only backup if we haven't already backed up today
-    if (!fs.existsSync(backupFile) && fs.existsSync(dbPath)) {
-      fs.copyFileSync(dbPath, backupFile);
-      console.log(`[Database] Auto-backup created: ${backupFile}`);
+    if (!fs.existsSync(backupFile)) {
+      if (fs.existsSync(tmpBackupFile)) {
+        fs.rmSync(tmpBackupFile, { force: true });
+      }
+      dbInstance.backup(tmpBackupFile)
+        .then(() => {
+          fs.renameSync(tmpBackupFile, backupFile);
+          console.log(`[Database] Auto-backup created: ${backupFile}`);
+        })
+        .catch((err) => {
+          try { fs.rmSync(tmpBackupFile, { force: true }); } catch {}
+          console.error('[Database] Auto-backup failed:', err);
+        });
     }
   } catch (err) {
     console.error('[Database] Auto-backup failed:', err);
@@ -297,13 +313,12 @@ function autoBackup(dbPath) {
 
 function initDatabase() {
   const dbPath = path.join(app.getPath('userData'), 'database.sqlite');
-  autoBackup(dbPath);
-  
   db = new Database(dbPath);
   
   // Enable WAL mode for better concurrency and crash resistance
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
+  autoBackup(db);
 
   // Initialize Tables
   db.exec(`
@@ -423,7 +438,6 @@ function initDatabase() {
     const allStations = jsonStore.getAll('stations');
     const allSessions = jsonStore.getAll('sessions');
     const activeSessions = allSessions.filter(s => s.status === 'active');
-    const activeStationIds = new Set(activeSessions.map(s => s.station_id));
 
     for (const st of allStations) {
       const activeSession = activeSessions.find(s => s.station_id === st.id);
@@ -516,7 +530,7 @@ function setupIpcHandlers() {
           details: `Merged ${duplicateCustomerIds.length} duplicate contact(s) into customer ID ${targetCustomerId}. Combined Points: ${mergedData.loyalty_points || 0}, Wallet: ₹${mergedData.wallet_balance || 0}`
         };
         db.prepare('INSERT INTO audit_logs (id, data) VALUES (?, ?)').run(logId, JSON.stringify(logData));
-      } catch (_) {}
+      } catch {}
 
       return { success: true, count: duplicateCustomerIds.length };
     });

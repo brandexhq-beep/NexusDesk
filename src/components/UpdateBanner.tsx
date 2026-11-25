@@ -16,23 +16,27 @@ export function UpdateBanner() {
     // Only available in Electron context
     if (!(window as any).api?.updater) return;
 
-    updater.onUpdateAvailable((i) => {
-      setInfo(i);
-      setState('available');
-    });
+    const unsubs = [
+      updater.onUpdateAvailable((i) => {
+        setInfo(i);
+        setState('available');
+      }),
+      updater.onUpdateProgress((p) => {
+        setState('downloading');
+        setProgress(Math.round(p.percent || 0));
+      }),
+      updater.onUpdateDownloaded((i) => {
+        setInfo(i);
+        setState('ready');
+        setDismissed(false); // re-show if dismissed
+      }),
+    ];
 
-    updater.onUpdateProgress((p) => {
-      setState('downloading');
-      setProgress(Math.round(p.percent || 0));
-    });
-
-    updater.onUpdateDownloaded((i) => {
-      setInfo(i);
-      setState('ready');
-      setDismissed(false); // re-show if dismissed
-    });
-
-    return () => updater.removeListeners();
+    return () => {
+      for (const unsub of unsubs) {
+        if (typeof unsub === 'function') unsub();
+      }
+    };
   }, []);
 
   if (dismissed || state === 'idle') return null;

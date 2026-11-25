@@ -104,7 +104,7 @@ export function Promotions() {
     try {
       const data = await db.whatsappPromotions.getAll();
       setJobs(data);
-    } catch (e) {
+    } catch {
       console.error('Failed to load jobs');
     }
   };
@@ -170,7 +170,7 @@ export function Promotions() {
       const fileInput = document.getElementById('promo-image') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
       loadJobs();
-    } catch (e) {
+    } catch {
       toast.error('Failed to schedule campaign');
     }
   };
@@ -180,7 +180,7 @@ export function Promotions() {
       await db.whatsappPromotions.delete(id);
       toast.success('Job deleted');
       loadJobs();
-    } catch (e) {
+    } catch {
       toast.error('Failed to delete job');
     }
   };
@@ -190,7 +190,7 @@ export function Promotions() {
       await db.whatsappPromotions.cancel(id);
       toast.success('Campaign cancelled — it will not be sent.');
       loadJobs();
-    } catch (e) {
+    } catch {
       toast.error('Failed to cancel campaign');
     }
   };
@@ -209,7 +209,7 @@ export function Promotions() {
             const failed = jobItems.filter((q: any) => q.status === 'failed').length;
             setProgress({ total: initialTotal, sent, failed });
           }
-        } catch(e) {}
+        } catch {}
       };
       fetchProgress();
       const interval = setInterval(fetchProgress, 5000);

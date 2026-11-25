@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
-import { db, whatsapp, updater } from '../services/db';
+import { useSearchParams } from 'react-router-dom';
+import { db, whatsapp, updater, logs } from '../services/db';
 import type { AppSettings, PricingRule } from '../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle, RefreshCw, Loader2, ShieldAlert, LogOut, PowerOff, Phone, Smartphone } from 'lucide-react';
+import { Save, Plus, Download, Upload, CheckCircle2, MessageCircle, Trash2, AlertCircle, RefreshCw, Loader2, ShieldAlert, LogOut, PowerOff, Phone, Smartphone, Send, FileText } from 'lucide-react';
 import { PricingRuleModal } from '../components/PricingRuleModal';
 import { PricingManager } from '../components/PricingManager';
 import { ConfirmPasswordModal } from '../components/ConfirmPasswordModal';
@@ -66,39 +67,45 @@ export function Settings() {
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
 
   // WhatsApp status state
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<string>(() => searchParams.get('tab') || 'general');
   const [waStatus, setWaStatus] = useState<{ready: boolean, qr: string | null}>({ ready: false, qr: null });
   const [waQueue, setWaQueue] = useState<any[]>([]);
+  const [testWaPhone, setTestWaPhone] = useState('');
+  const [sendingTestWa, setSendingTestWa] = useState(false);
   const waIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     loadSettings();
 
+    const unsubs: Array<() => void> = [];
     if ((window as any).api?.updater) {
-      updater.onUpdateChecking(() => {
+      const addUnsub = (fn: any) => { if (typeof fn === 'function') unsubs.push(fn); };
+      addUnsub(updater.onUpdateChecking(() => {
         setUpdateState('checking');
-      });
-      updater.onUpdateNotAvailable(() => {
+      }));
+      addUnsub(updater.onUpdateNotAvailable(() => {
         toast.dismiss();
         toast.success('Sara Gaming Zone is up to date!');
         setCheckingUpdate(false);
         setUpdateState('idle');
-      });
-      updater.onUpdateAvailable((info: any) => {
+      }));
+      addUnsub(updater.onUpdateAvailable((info: any) => {
         setUpdateInfo(info);
         setUpdateState('available');
         setCheckingUpdate(false);
         toast.info(`Update v${info?.version} is available and downloading!`);
-      });
-      updater.onUpdateProgress((progressObj: any) => {
+      }));
+      addUnsub(updater.onUpdateProgress((progressObj: any) => {
         setUpdateState('downloading');
         setUpdateProgress(Math.round(progressObj?.percent || 0));
-      });
-      updater.onUpdateDownloaded((info: any) => {
+      }));
+      addUnsub(updater.onUpdateDownloaded((info: any) => {
         setUpdateInfo(info);
         setUpdateState('ready');
         toast.success(`Update v${info?.version} downloaded and ready to install!`);
-      });
-      updater.onUpdateError((err: any) => {
+      }));
+      addUnsub(updater.onUpdateError((err: any) => {
         toast.dismiss();
         const msg = err?.message || '';
         if (msg.includes('404') || msg.includes('releases.atom')) {
@@ -108,11 +115,12 @@ export function Settings() {
         }
         setCheckingUpdate(false);
         setUpdateState('idle');
-      });
+      }));
     }
 
     return () => {
       if (waIntervalRef.current) clearInterval(waIntervalRef.current);
+      for (const unsub of unsubs) unsub();
     };
   }, []);
 
@@ -151,7 +159,24 @@ export function Settings() {
     });
   };
 
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab((prev) => (prev !== tabParam ? tabParam : prev));
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (activeTab === 'whatsapp') {
+      startWhatsAppPolling();
+    } else {
+      stopWhatsAppPolling();
+    }
+    return () => stopWhatsAppPolling();
+  }, [activeTab]);
+
   const startWhatsAppPolling = () => {
+    stopWhatsAppPolling();
     const fetchWaStatus = async () => {
       try {
         const json = await whatsapp.getStatus();
@@ -159,11 +184,11 @@ export function Settings() {
         
         try {
           const queueJson = await db.whatsappQueue.getAll();
-          setWaQueue(queueJson || []);
-        } catch (eq) {
+          setWaQueue([...(queueJson || [])].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+        } catch {
           // Ignore queue fetch error silently
         }
-      } catch (e) {
+      } catch {
         setWaStatus({ ready: false, qr: null });
       }
     };
@@ -252,9 +277,48 @@ export function Settings() {
   const handleResendQueueItem = async (id: string) => {
     try {
       await db.whatsappQueue.resend(id);
-      setWaQueue(prev => prev.map(item => item.id === id ? { ...item, status: 'pending', retryCount: 0 } : item));
+      setWaQueue(prev => prev.map(item => item.id === id ? { ...item, status: 'pending', retryCount: 0, error: null } : item));
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleRetryFailedQueue = async () => {
+    const retryable = waQueue.filter(item => item.status === 'failed' && !item.permanent);
+    if (retryable.length === 0) return;
+    try {
+      await Promise.all(retryable.map(item => db.whatsappQueue.resend(item.id)));
+      const retryIds = new Set(retryable.map(i => i.id));
+      setWaQueue(prev => prev.map(item => retryIds.has(item.id) ? { ...item, status: 'pending', retryCount: 0, error: null } : item));
+      toast.success(`Re-queued ${retryable.length} failed message(s).`);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to re-queue messages');
+    }
+  };
+
+  const handleSendTestWa = async () => {
+    const targetPhone = (testWaPhone || formData.owner_phone || '').trim();
+    if (!targetPhone) {
+      toast.error('Enter a phone number to send a test message.');
+      return;
+    }
+    setSendingTestWa(true);
+    try {
+      const cafeLabel = formData.cafe_name || 'Sara Gaming Zone';
+      const res = await whatsapp.sendInvoice({
+        phone: targetPhone,
+        message: `Test message from ${cafeLabel} (${new Date().toLocaleTimeString()}). WhatsApp integration is working!`,
+      });
+      if (res?.success === false) {
+        toast.error(res.error || 'Invalid phone number format');
+      } else {
+        toast.success(`Test message queued for ${targetPhone}.`);
+      }
+    } catch (e: any) {
+      toast.error('Failed to queue test message: ' + (e?.message || 'Unknown error'));
+    } finally {
+      setSendingTestWa(false);
     }
   };
 
@@ -416,7 +480,14 @@ export function Settings() {
         </Button>
       </div>
 
-      <Tabs defaultValue="general" className="w-full" onValueChange={(val) => val === 'whatsapp' ? startWhatsAppPolling() : stopWhatsAppPolling()}>
+      <Tabs
+        value={activeTab}
+        className="w-full"
+        onValueChange={(val) => {
+          setActiveTab(val);
+          setSearchParams(val === 'general' ? {} : { tab: val }, { replace: true });
+        }}
+      >
         <TabsList className="flex flex-wrap h-auto w-full max-w-3xl bg-black/40 border border-white/5 mb-6 justify-start">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="invoice">Invoice</TabsTrigger>
@@ -496,7 +567,7 @@ export function Settings() {
               <CardDescription>Backup and restore your local database.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 <Button onClick={handleBackup} variant="outline" className="border-white/10 gap-2">
                   <Download className="w-4 h-4" /> Backup Database
                 </Button>
@@ -512,6 +583,26 @@ export function Settings() {
                   className="hidden" 
                   onChange={handleRestore} 
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-white/10 gap-2"
+                  onClick={async () => {
+                    try {
+                      const res = await logs.exportLogs();
+                      if (res?.canceled) return;
+                      if (res?.success) {
+                        toast.success(`Diagnostic logs saved to ${res.filePath}`);
+                      } else {
+                        toast.error(res?.error || 'Could not export logs');
+                      }
+                    } catch (err: any) {
+                      toast.error(err?.message || 'Could not export logs');
+                    }
+                  }}
+                >
+                  <FileText className="w-4 h-4" /> Export Diagnostic Logs
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -1008,6 +1099,26 @@ export function Settings() {
                       <LogOut className="w-3.5 h-3.5" /> Unlink Account
                     </Button>
                   </div>
+
+                  <div className="w-full pt-3 mt-1 border-t border-emerald-500/15 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <Input
+                      type="text"
+                      value={testWaPhone}
+                      onChange={(e) => setTestWaPhone(e.target.value)}
+                      placeholder={formData.owner_phone ? `Test number (default: ${formData.owner_phone})` : 'Enter 10-digit mobile for test msg'}
+                      className="h-8 text-xs bg-background/50 border-white/10"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={sendingTestWa}
+                      onClick={handleSendTestWa}
+                      className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shrink-0"
+                    >
+                      {sendingTestWa ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                      Send Test
+                    </Button>
+                  </div>
                 </div>
               ) : waStatus.qr ? (
                 <div className="flex flex-col items-center gap-4 py-4">
@@ -1277,7 +1388,13 @@ export function Settings() {
                 <CardTitle className="text-card-foreground">WhatsApp Outbound Queue</CardTitle>
                 <CardDescription>Monitor and manage pending messages. Failing messages drop automatically after 3 retries.</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {waQueue.some(item => item.status === 'failed' && !item.permanent) && (
+                  <Button onClick={handleRetryFailedQueue} variant="outline" size="sm" className="bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 border-blue-500/20 text-xs gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Retry Failed ({waQueue.filter(item => item.status === 'failed' && !item.permanent).length})
+                  </Button>
+                )}
                 {waQueue.some(item => item.status === 'failed') && (
                   <Button onClick={handleClearFailedQueue} variant="outline" size="sm" className="bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 border-purple-500/20 text-xs">
                     Clear Failed ({waQueue.filter(item => item.status === 'failed').length})

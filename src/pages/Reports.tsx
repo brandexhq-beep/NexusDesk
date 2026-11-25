@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -85,7 +85,7 @@ export function Reports() {
   };
 
   // Helper date range calculation
-  const getDateRange = () => {
+  const getDateRange = useCallback(() => {
     const now = new Date();
     let startMs = 0;
     let endMs = now.getTime();
@@ -114,7 +114,7 @@ export function Reports() {
     }
 
     return { startMs, endMs };
-  };
+  }, [dateFilterType, startDateStr, endDateStr]);
 
   // Process data whenever filters or sessions change
   useEffect(() => {
@@ -257,7 +257,7 @@ export function Reports() {
     const expTotal = filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     setTotalExpenses(expTotal);
 
-  }, [sessions, dateFilterType, startDateStr, endDateStr, selectedStationFilter, selectedPaymentFilter, games, expensesList]);
+  }, [sessions, getDateRange, selectedStationFilter, selectedPaymentFilter, games, expensesList]);
 
   // Filter sessions table
   const { startMs: rangeStart, endMs: rangeEnd } = getDateRange();

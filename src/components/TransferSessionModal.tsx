@@ -93,7 +93,7 @@ export function TransferSessionModal({
       toast.success(`Updated player count to ${numPlayers}P`);
       onSuccess();
       onClose();
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to update player count');
     } finally {
       setLoading(false);

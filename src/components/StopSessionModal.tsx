@@ -25,6 +25,10 @@ export function StopSessionModal({ station, session, rules, onClose, onStop, sto
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
   const [splitCash, setSplitCash] = useState<string>('0');
+  const paymentModeRef = useRef<PaymentMode>(paymentMode);
+  const splitCashRef = useRef<string>(splitCash);
+  paymentModeRef.current = paymentMode;
+  splitCashRef.current = splitCash;
   const [splitUpi, setSplitUpi] = useState<string>('0');
   const [pointsToRedeem, setPointsToRedeem] = useState<number>(0);
   const [loading, setLoading] = useState(false);
@@ -143,8 +147,8 @@ export function StopSessionModal({ station, session, rules, onClose, onStop, sto
     }));
 
     // Auto update split amounts if in mixed mode
-    if (paymentMode === 'mixed') {
-      const currentCash = parseFloat(splitCash) || 0;
+    if (paymentModeRef.current === 'mixed') {
+      const currentCash = parseFloat(splitCashRef.current) || 0;
       if (currentCash <= finalTotal) {
         setSplitUpi((finalTotal - currentCash).toFixed(2));
       } else {
@@ -308,7 +312,9 @@ export function StopSessionModal({ station, session, rules, onClose, onStop, sto
           
           await whatsapp.sendInvoice({
             phone: customer.phone,
-            message: invoiceText
+            message: invoiceText,
+            eventId: `checkout_${session.id}`,
+            bypassDailyLimit: true,
           });
           toast.success('Invoice sent via WhatsApp!');
         } catch (e) {

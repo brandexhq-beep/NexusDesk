@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { db, whatsapp } from '../services/db';
 import type { Station, Session, PricingRule, Customer, Game } from '../types';
 import { calculateDynamicCost } from '../lib/pricing';
@@ -502,6 +502,8 @@ function StationCard({
   const [isHappyHour, setIsHappyHour] = useState(false);
 
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const onStationUpdatedRef = useRef(onStationUpdated);
+  onStationUpdatedRef.current = onStationUpdated;
 
   useEffect(() => {
     if (isRunning) {
@@ -518,7 +520,7 @@ function StationCard({
           setCustomer(null);
           // Auto-heal: If station says occupied/paused but no active session exists, mark it free
           db.stations.update(station.id, { status: 'free' }).then(() => {
-            onStationUpdated?.();
+            onStationUpdatedRef.current?.();
           });
         }
       });
